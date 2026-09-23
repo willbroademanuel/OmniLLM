@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniLLM - Universal API Playground & Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="dark-theme">
+  <div class="app-layout">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-badge">API</div>
+        <div class="brand-text">
+          <h1>OmniLLM Studio</h1>
+          <span class="subtitle">Universal Model Playground & Diagnostic Tester</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="server-status-indicator" id="serverStatusBadge">
+          <span class="status-dot"></span>
+          <span id="serverStatusText">Server: Online</span>
+        </div>
+        <button id="clearHistoryBtn" class="btn-ghost" title="Clear test history">Clear History</button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-workspace">
+      <!-- Left Panel: Configurations -->
+      <aside class="config-sidebar">
+        <div class="panel-header">
+          <h2>Configuration</h2>
+          <span class="panel-tag">Provider & Auth</span>
+        </div>
+
+        <div class="config-scroll-area">
+          <!-- Provider Selection -->
+          <div class="form-group">
+            <label for="providerSelect">Target Provider</label>
+            <div class="select-wrapper">
+              <select id="providerSelect">
+                <option value="openai">OpenAI (Official)</option>
+                <option value="claude">Anthropic Claude</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="groq">Groq Cloud</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="ollama">Ollama (Localhost)</option>
+                <option value="lmstudio">LM Studio (Localhost)</option>
+                <option value="custom">Custom OpenAI-Compatible</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Base URL -->
+          <div class="form-group">
+            <div class="label-row">
+              <label for="baseUrlInput">Base URL</label>
+              <button type="button" class="btn-text" id="resetUrlBtn">Reset</button>
+            </div>
+            <input 
+              type="text" 
+              id="baseUrlInput" 
+              placeholder="https://api.openai.com/v1" 
+              autocomplete="off" 
+              spellcheck="false"
+            >
+            <span class="field-hint" id="endpointHint">Endpoint: /v1/chat/completions</span>
+          </div>
+
+          <!-- API Key Field -->
+          <div class="form-group">
+            <div class="label-row">
+              <label for="apiKeyInput">API Key</label>
+              <div class="key-actions">
+                <label class="remember-label">
+                  <input type="checkbox" id="saveKeyCheck">
+                  <span>Save locally</span>
+                </label>
+              </div>
+            </div>
+            <div class="input-with-button">
+              <input 
+                type="password" 
+                id="apiKeyInput" 
+                placeholder="Paste your API key here" 
+                autocomplete="off" 
+                spellcheck="false"
+              >
+              <button type="button" id="toggleKeyVisibilityBtn" class="icon-toggle-btn" title="Toggle visibility">
+                <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+            <span class="field-hint" id="keyHint">Keys are held in browser memory or local storage. Never logged.</span>
+          </div>
+
+          <!-- Model Name Field -->
+          <div class="form-group">
+            <label for="modelInput">Model Name</label>
+            <input 
+              type="text" 
+              id="modelInput" 
+              placeholder="e.g. gpt-4o" 
+              autocomplete="off" 
+              spellcheck="false"
+            >
+            <!-- Model Presets Chips -->
+            <div class="model-presets-container">
+              <span class="chips-label">Presets:</span>
+              <div class="model-chips" id="modelChipsContainer">
+                <!-- Dynamically populated chips -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Parameters Accordion -->
+          <div class="accordion-item">
+            <button class="accordion-toggle" id="paramsToggle" type="button">
+              <span>Model Parameters</span>
+              <span class="accordion-arrow" id="paramsArrow">&#9656;</span>
+            </button>
+            <div class="accordion-body collapsed" id="paramsBody">
+              <!-- Temperature -->
+              <div class="param-row">
+                <div class="param-label">
+                  <span>Temperature</span>
+                  <span class="param-val" id="tempValue">0.7</span>
+                </div>
+                <input type="range" id="tempSlider" min="0" max="2" step="0.1" value="0.7">
+              </div>
+
+              <!-- Max Tokens -->
+              <div class="param-row">
+                <div class="param-label">
+                  <span>Max Tokens</span>
+                  <span class="param-val" id="maxTokensValue">2048</span>
+                </div>
+                <input type="number" id="maxTokensInput" min="1" max="64000" value="2048" class="number-input">
+              </div>
+
+              <!-- Streaming Switch -->
+              <div class="switch-row">
+                <div class="switch-info">
+                  <span class="switch-title">Stream Response</span>
+                  <span class="switch-desc">Receive tokens in real time via SSE</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="streamToggle" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <!-- System Prompt -->
+              <div class="form-group margin-top-sm">
+                <label for="systemPromptInput">System Prompt</label>
+                <textarea 
+                  id="systemPromptInput" 
+                  rows="2" 
+                  placeholder="Optional system instruction..."
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Test History Section -->
+          <div class="history-section">
+            <div class="history-header">
+              <span>Recent Tests</span>
+              <span class="history-count" id="historyCount">0</span>
+            </div>
+            <div class="history-list" id="historyList">
+              <div class="empty-history">No tests executed yet</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Panel: Execution & Results -->
+      <main class="test-content">
+        <!-- Ready-made Fast Test Banner -->
+        <section class="ready-test-banner">
+          <div class="banner-content">
+            <div class="banner-title">
+              <span class="badge-accent">QUICK TEST</span>
+              <h3>One-Click Verification</h3>
+            </div>
+            <p class="banner-desc">
+              Execute a pre-configured probe query <span class="code-quote">"What is life?"</span> against your selected model to verify authentication, endpoint connectivity, and response integrity.
+            </p>
+          </div>
+          <div class="banner-action">
+            <button id="runReadyTestBtn" class="btn-ready-test" type="button">
+              <span class="btn-text">Test: What is life?</span>
+              <span class="btn-shortcut">Instant</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Prompt Console Section -->
+        <section class="prompt-console-card">
+          <div class="console-header">
+            <div class="console-title">
+              <span class="section-title">Query Console</span>
+            </div>
+            <div class="sample-prompts">
+              <span class="sample-label">Fill prompt:</span>
+              <button type="button" class="btn-chip" data-fill="What is life?">What is life?</button>
+              <button type="button" class="btn-chip" data-fill="Explain quantum computing in one sentence.">Quantum in 1 sentence</button>
+              <button type="button" class="btn-chip" data-fill="Write a Python function to compute Fibonacci numbers.">Python Fibonacci</button>
+              <button type="button" class="btn-chip" data-fill="Respond strictly with JSON: { &quot;status&quot;: &quot;ok&quot;, &quot;timestamp&quot;: 12345 }">JSON Schema</button>
+            </div>
+          </div>
+
+          <div class="console-input-area">
+            <textarea 
+              id="userPromptInput" 
+              placeholder="Type your prompt here, or click 'Test: What is life?' above... (Press Ctrl+Enter to submit)"
+              rows="4"
+            >What is life?</textarea>
+            <div class="console-actions-bar">
+              <div class="console-meta">
+                <span id="charCount">14 chars</span>
+                <span class="key-hint-badge">Ctrl + Enter</span>
+              </div>
+              <div class="action-buttons">
+                <button type="button" id="clearPromptBtn" class="btn-secondary">Clear</button>
+                <button type="button" id="submitPromptBtn" class="btn-primary">
+                  <span id="submitBtnText">Send Request</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Response & Diagnostics Card -->
+        <section class="results-card">
+          <!-- Diagnostics Bar -->
+          <div class="diagnostics-bar">
+            <div class="diag-group">
+              <div class="diag-item">
+                <span class="diag-label">STATUS</span>
+                <span class="diag-badge idle" id="statusBadge">READY</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">LATENCY</span>
+                <span class="diag-value" id="latencyValue">-- ms</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">TOKENS (IN / OUT)</span>
+                <span class="diag-value" id="tokensValue">-- / --</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">TOTAL TOKENS</span>
+                <span class="diag-value" id="totalTokensValue">--</span>
+              </div>
+            </div>
+
+            <!-- View Mode Tabs -->
+            <div class="tabs-nav">
+              <button type="button" class="tab-btn active" data-tab="renderedTab">Formatted</button>
+              <button type="button" class="tab-btn" data-tab="jsonTab">Raw JSON</button>
+              <button type="button" class="tab-btn" data-tab="curlTab">cURL</button>
+              <button type="button" class="tab-btn" data-tab="detailsTab">Details</button>
+            </div>
+          </div>
+
+          <!-- Tab Content Panes -->
+          <div class="tabs-viewport">
+            <!-- Formatted Markdown Pane -->
+            <div class="tab-pane active" id="renderedTab">
+              <div class="pane-toolbar">
+                <span class="toolbar-title">Model Response</span>
+                <button type="button" class="btn-ghost-sm" id="copyRenderedBtn">Copy Output</button>
+              </div>
+              <div class="output-content markdown-body" id="renderedOutput">
+                <div class="placeholder-state">
+                  <p>Ready to test. Select your provider, paste your API key and model name, then click <strong>"Test: What is life?"</strong> or <strong>"Send Request"</strong>.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Raw JSON Pane -->
+            <div class="tab-pane" id="jsonTab">
+              <div class="pane-toolbar">
+                <span class="toolbar-title">Raw Response Payload</span>
+                <button type="button" class="btn-ghost-sm" id="copyJsonBtn">Copy JSON</button>
+              </div>
+              <pre class="code-viewer" id="rawJsonViewer"><code>// Raw JSON response will appear here</code></pre>
+            </div>
+
+            <!-- cURL Pane -->
+            <div class="tab-pane" id="curlTab">
+              <div class="pane-toolbar">
+                <span class="toolbar-title">Generated cURL Command</span>
+                <button type="button" class="btn-ghost-sm" id="copyCurlBtn">Copy cURL</button>
+              </div>
+              <pre class="code-viewer" id="curlViewer"><code># Click Send or Quick Test to inspect cURL command</code></pre>
+            </div>
+
+            <!-- Diagnostics Details Pane -->
+            <div class="tab-pane" id="detailsTab">
+              <div class="pane-toolbar">
+                <span class="toolbar-title">Connection & Diagnostic Metadata</span>
+              </div>
+              <div class="details-grid" id="detailsGrid">
+                <div class="detail-cell">
+                  <span class="cell-label">Resolved Target URL:</span>
+                  <span class="cell-value code" id="detailUrl">--</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="cell-label">Selected Provider:</span>
+                  <span class="cell-value" id="detailProvider">--</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="cell-label">Active Model:</span>
+                  <span class="cell-value" id="detailModel">--</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="cell-label">HTTP Status Code:</span>
+                  <span class="cell-value" id="detailHttpCode">--</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="cell-label">Execution Mode:</span>
+                  <span class="cell-value" id="detailMode">--</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="cell-label">Request Timestamp:</span>
+                  <span class="cell-value" id="detailTimestamp">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
