@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=4.5">
   <!-- Marked.js for markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body class="dark-theme">
+<body class="theme-cream-latte">
   <div class="app-layout">
     <!-- Top Header -->
     <header class="app-header">
@@ -23,10 +23,21 @@
           <span class="subtitle">Universal Model Playground & Diagnostic Tester</span>
         </div>
       </div>
+
+      <!-- Workspace Mode Switcher -->
+      <div class="mode-switcher" role="tablist" aria-label="Studio Mode">
+        <button type="button" class="mode-btn active" data-mode="playground">Playground</button>
+        <button type="button" class="mode-btn" data-mode="arena">A/B Arena</button>
+        <button type="button" class="mode-btn" data-mode="chat">Chat Thread</button>
+      </div>
+
       <div class="header-status">
-        <div class="server-status-indicator" id="serverStatusBadge">
-          <span class="status-dot"></span>
-          <span id="serverStatusText">Server: Online</span>
+        <div class="theme-picker-wrapper">
+          <label for="themeSelect" class="theme-label">Theme</label>
+          <select id="themeSelect" class="theme-select" aria-label="Color Theme">
+            <option value="theme-cream-latte" selected>Cream Latte</option>
+            <option value="theme-espresso">Creamy Espresso</option>
+          </select>
         </div>
         <button id="clearHistoryBtn" class="btn-ghost" title="Clear test history">Clear History</button>
       </div>
@@ -47,6 +58,8 @@
             <label for="providerSelect">Target Provider</label>
             <div class="select-wrapper">
               <select id="providerSelect">
+                <option value="custom" selected>Custom OpenAI-Compatible</option>
+                <option value="custom_anthropic">Custom Anthropic-Compatible</option>
                 <option value="openai">OpenAI (Official)</option>
                 <option value="claude">Anthropic Claude</option>
                 <option value="gemini">Google Gemini</option>
@@ -55,7 +68,6 @@
                 <option value="openrouter">OpenRouter</option>
                 <option value="ollama">Ollama (Localhost)</option>
                 <option value="lmstudio">LM Studio (Localhost)</option>
-                <option value="custom">Custom OpenAI-Compatible</option>
               </select>
             </div>
           </div>
@@ -107,11 +119,14 @@
 
           <!-- Model Name Field -->
           <div class="form-group">
-            <label for="modelInput">Model Name</label>
+            <div class="label-row">
+              <label for="modelInput">Model Name</label>
+              <button type="button" class="btn-text" id="detectModelsBtn" title="Detect loaded models from server (LM Studio, Ollama, etc.)">↻ Detect Models</button>
+            </div>
             <input 
               type="text" 
               id="modelInput" 
-              placeholder="e.g. gpt-4o" 
+              placeholder="e.g. gpt-4o or loaded model" 
               autocomplete="off" 
               spellcheck="false"
             >
@@ -122,6 +137,34 @@
                 <!-- Dynamically populated chips -->
               </div>
             </div>
+            <!-- Local Model Memory Status & Actions -->
+            <div id="localModelStatusBar" class="local-model-status-bar" style="display: none;">
+              <div class="model-status-left">
+                <span class="model-status-indicator" id="modelStatusIndicator"></span>
+                <span class="model-status-label" id="modelStatusLabel"></span>
+              </div>
+              <div class="model-status-actions">
+                <button type="button" id="loadModelBtn" class="btn-model-action load" title="Load this model into LM Studio memory/GPU" style="display: none;">
+                  <span>⚡ Load into Memory</span>
+                </button>
+                <button type="button" id="ejectModelBtn" class="btn-model-action eject" title="Eject this model from memory to free VRAM" style="display: none;">
+                  <span>⏏ Eject</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- Engineering Extensions Triggers -->
+          <div class="drawer-triggers-row">
+            <button type="button" class="btn-drawer-trigger" id="openHeadersDrawerBtn" title="Configure custom HTTP headers">
+              <span class="trigger-icon">#</span>
+              <span>Headers</span>
+              <span class="drawer-count-badge" id="headersBadgeCount">0</span>
+            </button>
+            <button type="button" class="btn-drawer-trigger" id="openToolsDrawerBtn" title="Configure function and tool schemas">
+              <span class="trigger-icon">{ }</span>
+              <span>Tools</span>
+              <span class="drawer-count-badge" id="toolsBadgeCount">OFF</span>
+            </button>
           </div>
 
           <!-- Parameters Accordion -->
@@ -161,6 +204,22 @@
                 </label>
               </div>
 
+              <!-- Request Timeout -->
+              <div class="param-row">
+                <div class="param-label">
+                  <span>Request Timeout</span>
+                  <span class="param-val" id="timeoutValue">60s</span>
+                </div>
+                <select id="timeoutSelect" class="compact-select">
+                  <option value="15">15 seconds</option>
+                  <option value="30">30 seconds</option>
+                  <option value="60" selected>60 seconds</option>
+                  <option value="120">120 seconds</option>
+                  <option value="300">300 seconds (5 min)</option>
+                  <option value="0">No limit (Infinite)</option>
+                </select>
+              </div>
+
               <!-- System Prompt -->
               <div class="form-group margin-top-sm">
                 <label for="systemPromptInput">System Prompt</label>
@@ -188,167 +247,507 @@
 
       <!-- Right Panel: Execution & Results -->
       <main class="test-content">
-        <!-- Ready-made Fast Test Banner -->
-        <section class="ready-test-banner">
-          <div class="banner-content">
-            <div class="banner-title">
-              <span class="badge-accent">QUICK TEST</span>
-              <h3>One-Click Verification</h3>
-            </div>
-            <p class="banner-desc">
-              Execute a pre-configured probe query <span class="code-quote">"What is life?"</span> against your selected model to verify authentication, endpoint connectivity, and response integrity.
-            </p>
-          </div>
-          <div class="banner-action">
-            <button id="runReadyTestBtn" class="btn-ready-test" type="button">
-              <span class="btn-text">Test: What is life?</span>
-              <span class="btn-shortcut">Instant</span>
-            </button>
-          </div>
-        </section>
-
-        <!-- Prompt Console Section -->
-        <section class="prompt-console-card">
-          <div class="console-header">
-            <div class="console-title">
-              <span class="section-title">Query Console</span>
-            </div>
-            <div class="sample-prompts">
-              <span class="sample-label">Fill prompt:</span>
-              <button type="button" class="btn-chip" data-fill="What is life?">What is life?</button>
-              <button type="button" class="btn-chip" data-fill="Explain quantum computing in one sentence.">Quantum in 1 sentence</button>
-              <button type="button" class="btn-chip" data-fill="Write a Python function to compute Fibonacci numbers.">Python Fibonacci</button>
-              <button type="button" class="btn-chip" data-fill="Respond strictly with JSON: { &quot;status&quot;: &quot;ok&quot;, &quot;timestamp&quot;: 12345 }">JSON Schema</button>
-            </div>
-          </div>
-
-          <div class="console-input-area">
-            <textarea 
-              id="userPromptInput" 
-              placeholder="Type your prompt here, or click 'Test: What is life?' above... (Press Ctrl+Enter to submit)"
-              rows="4"
-            >What is life?</textarea>
-            <div class="console-actions-bar">
-              <div class="console-meta">
-                <span id="charCount">14 chars</span>
-                <span class="key-hint-badge">Ctrl + Enter</span>
+        <!-- MODE 1: Playground View (Single Model Testing & Diagnostics) -->
+        <div id="playgroundModeView" class="mode-view active">
+          <!-- Ready-made Fast Test Banner -->
+          <section class="ready-test-banner">
+            <div class="banner-content">
+              <div class="banner-title">
+                <span class="badge-accent">QUICK TEST</span>
+                <h3>One-Click Verification</h3>
               </div>
-              <div class="action-buttons">
-                <button type="button" id="clearPromptBtn" class="btn-secondary">Clear</button>
-                <button type="button" id="submitPromptBtn" class="btn-primary">
-                  <span id="submitBtnText">Send Request</span>
+              <p class="banner-desc">
+                Execute a pre-configured probe query <span class="code-quote">"What is life?"</span> against your selected model to verify authentication, endpoint connectivity, and response integrity.
+              </p>
+            </div>
+            <div class="banner-action">
+              <button id="runReadyTestBtn" class="btn-ready-test" type="button">
+                <span class="btn-text">Test: What is life?</span>
+                <span class="btn-shortcut">Instant</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- Prompt Console Section -->
+          <section class="prompt-console-card">
+            <div class="console-header">
+              <div class="console-title">
+                <span class="section-title">Query Console</span>
+              </div>
+              <div class="sample-prompts">
+                <span class="sample-label">Fill prompt:</span>
+                <button type="button" class="btn-chip" data-fill="What is life?">What is life?</button>
+                <button type="button" class="btn-chip" data-fill="Explain quantum computing in one sentence.">Quantum in 1 sentence</button>
+                <button type="button" class="btn-chip" data-fill="Write a Python function to compute Fibonacci numbers.">Python Fibonacci</button>
+                <button type="button" class="btn-chip" data-fill="Respond strictly with JSON: { &quot;status&quot;: &quot;ok&quot;, &quot;timestamp&quot;: 12345 }">JSON Schema</button>
+              </div>
+            </div>
+
+            <div class="console-input-area">
+              <textarea 
+                id="userPromptInput" 
+                placeholder="Type your prompt here, or click 'Test: What is life?' above... (Press Ctrl+Enter to submit)"
+                rows="4"
+              >What is life?</textarea>
+              <div class="console-actions-bar">
+                <div class="console-meta">
+                  <span id="charCount">14 chars</span>
+                  <span class="key-hint-badge">Ctrl + Enter</span>
+                </div>
+                <div class="action-buttons">
+                  <button type="button" id="clearPromptBtn" class="btn-secondary">Clear</button>
+                  <button type="button" id="stopPromptBtn" class="btn-stop" style="display: none;" title="Cancel ongoing request">
+                    <span class="stop-icon">■</span>
+                    <span>Stop</span>
+                  </button>
+                  <button type="button" id="submitPromptBtn" class="btn-primary">
+                    <span id="submitBtnText">Send Request</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Response & Diagnostics Card -->
+          <section class="results-card">
+            <!-- Diagnostics Bar -->
+            <div class="diagnostics-bar">
+              <div class="diag-group">
+                <div class="diag-item">
+                  <span class="diag-label">STATUS</span>
+                  <span class="diag-badge idle" id="statusBadge">READY</span>
+                </div>
+                <div class="diag-item">
+                  <span class="diag-label">LATENCY</span>
+                  <span class="diag-value" id="latencyValue">-- ms</span>
+                </div>
+                <div class="diag-item">
+                  <span class="diag-label">TOKENS (IN / OUT)</span>
+                  <span class="diag-value" id="tokensValue">-- / --</span>
+                </div>
+                <div class="diag-item">
+                  <span class="diag-label">SPEED</span>
+                  <span class="diag-value accent-speed" id="tpsValue">-- TPS</span>
+                </div>
+              </div>
+
+              <!-- View Mode Tabs -->
+              <div class="tabs-nav">
+                <button type="button" class="tab-btn active" data-tab="renderedTab">Formatted</button>
+                <button type="button" class="tab-btn" data-tab="reasoningTab" id="reasoningTabBtn">Reasoning</button>
+                <button type="button" class="tab-btn" data-tab="tokenomicsTab">Tokenomics</button>
+                <button type="button" class="tab-btn" data-tab="jsonTab">Raw JSON</button>
+                <button type="button" class="tab-btn" data-tab="curlTab">cURL</button>
+                <button type="button" class="tab-btn" data-tab="headersTab">Headers</button>
+                <button type="button" class="tab-btn" data-tab="detailsTab">Details</button>
+              </div>
+            </div>
+
+            <!-- Tab Content Panes -->
+            <div class="tabs-viewport">
+              <!-- Formatted Markdown Pane -->
+              <div class="tab-pane active" id="renderedTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Model Response</span>
+                  <button type="button" class="btn-ghost-sm" id="copyRenderedBtn">Copy Output</button>
+                </div>
+                <div class="output-content markdown-body" id="renderedOutput">
+                  <div class="placeholder-state">
+                    <p>Ready to test. Select your provider, paste your API key and model name, then click <strong>"Test: What is life?"</strong> or <strong>"Send Request"</strong>.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Reasoning / Thinking Pane -->
+              <div class="tab-pane" id="reasoningTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Thinking Process / Chain-of-Thought</span>
+                  <button type="button" class="btn-ghost-sm" id="copyReasoningBtn">Copy Reasoning</button>
+                </div>
+                <div class="output-content" id="reasoningOutput">
+                  <div class="placeholder-state">
+                    <p>Reasoning tokens from thinking models (DeepSeek-R1, o1, o3-mini, Claude 3.7) will be captured and displayed here.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tokenomics & Throughput Pane -->
+              <div class="tab-pane" id="tokenomicsTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Tokenomics & Generation Speed</span>
+                </div>
+                <div class="tokenomics-grid">
+                  <div class="stat-card">
+                    <span class="stat-label">Prompt Tokens</span>
+                    <span class="stat-num" id="statPromptTokens">--</span>
+                    <span class="stat-sub">Input context size</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Completion Tokens</span>
+                    <span class="stat-num" id="statCompletionTokens">--</span>
+                    <span class="stat-sub">Generated output tokens</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Generation Speed</span>
+                    <span class="stat-num accent-speed" id="statTps">--</span>
+                    <span class="stat-sub">Tokens per second (TPS)</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Time To First Token</span>
+                    <span class="stat-num" id="statTtft">--</span>
+                    <span class="stat-sub">Initial TTFT latency</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Raw JSON Pane -->
+              <div class="tab-pane" id="jsonTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Raw Response Payload</span>
+                  <button type="button" class="btn-ghost-sm" id="copyJsonBtn">Copy JSON</button>
+                </div>
+                <pre class="code-viewer" id="rawJsonViewer"><code>// Raw JSON response will appear here</code></pre>
+              </div>
+
+              <!-- cURL Pane -->
+              <div class="tab-pane" id="curlTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Generated cURL Command</span>
+                  <button type="button" class="btn-ghost-sm" id="copyCurlBtn">Copy cURL</button>
+                </div>
+                <pre class="code-viewer" id="curlViewer"><code># Click Send or Quick Test to inspect cURL command</code></pre>
+              </div>
+
+              <!-- Response Headers Pane -->
+              <div class="tab-pane" id="headersTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Upstream HTTP Response Headers</span>
+                  <button type="button" class="btn-ghost-sm" id="copyHeadersBtn">Copy Headers</button>
+                </div>
+                <div class="headers-viewer" id="headersViewerContainer">
+                  <div class="placeholder-state">
+                    <p>Upstream response headers (rate limits, request IDs) will appear here after request execution.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Diagnostics Details Pane -->
+              <div class="tab-pane" id="detailsTab">
+                <div class="pane-toolbar">
+                  <span class="toolbar-title">Connection & Diagnostic Metadata</span>
+                </div>
+                <div class="details-grid" id="detailsGrid">
+                  <div class="detail-cell">
+                    <span class="cell-label">Resolved Target URL:</span>
+                    <span class="cell-value code" id="detailUrl">--</span>
+                  </div>
+                  <div class="detail-cell">
+                    <span class="cell-label">Selected Provider:</span>
+                    <span class="cell-value" id="detailProvider">--</span>
+                  </div>
+                  <div class="detail-cell">
+                    <span class="cell-label">Active Model:</span>
+                    <span class="cell-value" id="detailModel">--</span>
+                  </div>
+                  <div class="detail-cell">
+                    <span class="cell-label">HTTP Status Code:</span>
+                    <span class="cell-value" id="detailHttpCode">--</span>
+                  </div>
+                  <div class="detail-cell">
+                    <span class="cell-label">Execution Mode:</span>
+                    <span class="cell-value" id="detailMode">--</span>
+                  </div>
+                  <div class="detail-cell">
+                    <span class="cell-label">Request Timestamp:</span>
+                    <span class="cell-value" id="detailTimestamp">--</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- MODE 2: A/B Arena Dual Model Mode -->
+        <div id="arenaModeView" class="mode-view">
+          <div class="arena-prompt-panel">
+            <div class="arena-panel-header">
+              <span class="section-title">Shared A/B Test Query</span>
+              <span class="field-hint">Sent concurrently to Model A and Model B</span>
+            </div>
+            <div class="arena-input-row">
+              <textarea id="arenaPromptInput" placeholder="Enter prompt to run simultaneously against Model A and Model B... (Press Ctrl+Enter)" rows="3">Compare the architectural advantages of Rust vs Go for high-throughput distributed microservices.</textarea>
+              <button type="button" id="runArenaBtn" class="btn-primary btn-arena-run">
+                <span>Run A/B Comparison</span>
+                <span class="btn-shortcut">Ctrl+Enter</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="arena-summary-banner" id="arenaSummaryBanner" style="display: none;">
+            <div class="summary-text" id="arenaSummaryText">Dual test completed.</div>
+            <div class="summary-tags" id="arenaSummaryTags"></div>
+          </div>
+
+          <div class="arena-grid">
+            <!-- Model A Column -->
+            <div class="arena-card" id="arenaCardA">
+              <div class="arena-header">
+                <div class="arena-model-badge">
+                  <span class="tag-letter">A</span>
+                  <span class="arena-model-name" id="arenaModelAName">Model A</span>
+                </div>
+                <div class="arena-header-controls">
+                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedA" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
+                  <span class="badge-status idle" id="arenaStatusA">IDLE</span>
+                </div>
+              </div>
+
+              <!-- Model A Config Bar -->
+              <div class="arena-config-bar">
+                <div class="arena-config-row">
+                  <div class="arena-field-group flex-provider">
+                    <label for="arenaModelAProvider">Provider</label>
+                    <select id="arenaModelAProvider" class="arena-select">
+                      <option value="custom" selected>Custom OpenAI-Compatible</option>
+                      <option value="custom_anthropic">Custom Anthropic-Compatible</option>
+                      <option value="openai">OpenAI (Official)</option>
+                      <option value="claude">Anthropic Claude</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="groq">Groq Cloud</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="ollama">Ollama (Localhost)</option>
+                      <option value="lmstudio">LM Studio (Localhost)</option>
+                    </select>
+                  </div>
+                  <div class="arena-field-group flex-model">
+                    <label for="arenaModelAInput">Model Identifier</label>
+                    <input type="text" id="arenaModelAInput" class="arena-input" placeholder="e.g. llama-3.3-70b">
+                  </div>
+                </div>
+
+                <!-- Advanced Overrides for Model A (Collapsible) -->
+                <div class="arena-advanced-panel collapsed" id="arenaAdvancedPanelA">
+                  <div class="arena-config-row">
+                    <div class="arena-field-group flex-1">
+                      <label for="arenaKeyA">API Key (Override)</label>
+                      <input type="password" id="arenaKeyA" class="arena-input" placeholder="Inherited from sidebar if blank" autocomplete="off">
+                    </div>
+                    <div class="arena-field-group flex-1">
+                      <label for="arenaUrlA">Base URL (Override)</label>
+                      <input type="text" id="arenaUrlA" class="arena-input" placeholder="Inherited from sidebar if blank" autocomplete="off">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Model A Presets -->
+                <div class="arena-chips-row" id="arenaChipsA">
+                  <!-- Dynamically populated chips -->
+                </div>
+              </div>
+
+              <div class="arena-output markdown-body" id="arenaOutputA">
+                <div class="placeholder-state"><p>Model A response will stream here</p></div>
+              </div>
+              <div class="arena-metrics">
+                <div class="metric-item"><span class="m-label">TTFT:</span> <span id="arenaTtftA">--</span></div>
+                <div class="metric-item"><span class="m-label">Latency:</span> <span id="arenaLatencyA">--</span></div>
+                <div class="metric-item"><span class="m-label">Speed:</span> <span id="arenaTpsA" class="accent-speed">-- TPS</span></div>
+                <div class="metric-item"><span class="m-label">Tokens:</span> <span id="arenaTokensA">--</span></div>
+              </div>
+            </div>
+
+            <!-- Model B Column -->
+            <div class="arena-card" id="arenaCardB">
+              <div class="arena-header">
+                <div class="arena-model-badge">
+                  <span class="tag-letter">B</span>
+                  <span class="arena-model-name" id="arenaModelBName">Model B</span>
+                </div>
+                <div class="arena-header-controls">
+                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedB" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
+                  <span class="badge-status idle" id="arenaStatusB">IDLE</span>
+                </div>
+              </div>
+
+              <!-- Model B Config Bar -->
+              <div class="arena-config-bar">
+                <div class="arena-config-row">
+                  <div class="arena-field-group flex-provider">
+                    <label for="arenaModelBProvider">Provider</label>
+                    <select id="arenaModelBProvider" class="arena-select">
+                      <option value="openai" selected>OpenAI (Official)</option>
+                      <option value="claude">Anthropic Claude</option>
+                      <option value="custom">Custom OpenAI-Compatible</option>
+                      <option value="custom_anthropic">Custom Anthropic-Compatible</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="groq">Groq Cloud</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="ollama">Ollama (Localhost)</option>
+                      <option value="lmstudio">LM Studio (Localhost)</option>
+                    </select>
+                  </div>
+                  <div class="arena-field-group flex-model">
+                    <label for="arenaModelBInput">Model Identifier</label>
+                    <input type="text" id="arenaModelBInput" class="arena-input" value="gpt-4o" placeholder="e.g. gpt-4o">
+                  </div>
+                </div>
+
+                <!-- Advanced Overrides for Model B (Collapsible) -->
+                <div class="arena-advanced-panel collapsed" id="arenaAdvancedPanelB">
+                  <div class="arena-config-row">
+                    <div class="arena-field-group flex-1">
+                      <label for="arenaKeyB">API Key (Override / Saved)</label>
+                      <input type="password" id="arenaKeyB" class="arena-input" placeholder="Saved or custom API key" autocomplete="off">
+                    </div>
+                    <div class="arena-field-group flex-1">
+                      <label for="arenaUrlB">Base URL (Override)</label>
+                      <input type="text" id="arenaUrlB" class="arena-input" placeholder="Provider default if blank" autocomplete="off">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Model B Presets -->
+                <div class="arena-chips-row" id="arenaChipsB">
+                  <!-- Dynamically populated chips -->
+                </div>
+              </div>
+
+              <div class="arena-output markdown-body" id="arenaOutputB">
+                <div class="placeholder-state"><p>Model B response will stream here</p></div>
+              </div>
+              <div class="arena-metrics">
+                <div class="metric-item"><span class="m-label">TTFT:</span> <span id="arenaTtftB">--</span></div>
+                <div class="metric-item"><span class="m-label">Latency:</span> <span id="arenaLatencyB">--</span></div>
+                <div class="metric-item"><span class="m-label">Speed:</span> <span id="arenaTpsB" class="accent-speed">-- TPS</span></div>
+                <div class="metric-item"><span class="m-label">Tokens:</span> <span id="arenaTokensB">--</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODE 3: Chat Thread Multi-turn Mode -->
+        <div id="chatModeView" class="mode-view">
+          <div class="chat-thread-container">
+            <div class="chat-thread-header">
+              <div class="chat-thread-title">
+                <span class="section-title">Multi-Turn Conversation Thread</span>
+                <span class="chat-turn-count" id="chatTurnCount">0 turns</span>
+              </div>
+              <div class="chat-thread-actions">
+                <button type="button" class="btn-ghost-sm" id="exportChatBtn">Export Thread</button>
+                <button type="button" class="btn-ghost-sm" id="clearChatBtn">Reset Thread</button>
+              </div>
+            </div>
+
+            <div class="chat-messages-stream" id="chatMessagesStream">
+              <div class="chat-system-pill" id="chatSystemPill">
+                <span class="pill-label">SYSTEM:</span>
+                <span id="chatSystemText" class="pill-text">Default assistant prompt</span>
+              </div>
+              <div class="empty-chat-state" id="emptyChatPlaceholder">
+                <p>No messages in conversation. Type your opening prompt below to test multi-turn conversation and context retention.</p>
+              </div>
+            </div>
+
+            <div class="chat-composer">
+              <div class="composer-input-row">
+                <textarea id="chatInputText" placeholder="Reply to model... (Press Enter to send, Shift+Enter for new line)" rows="2"></textarea>
+                <button type="button" id="chatSendBtn" class="btn-primary btn-chat-send">
+                  <span>Send</span>
                 </button>
               </div>
             </div>
           </div>
-        </section>
-
-        <!-- Response & Diagnostics Card -->
-        <section class="results-card">
-          <!-- Diagnostics Bar -->
-          <div class="diagnostics-bar">
-            <div class="diag-group">
-              <div class="diag-item">
-                <span class="diag-label">STATUS</span>
-                <span class="diag-badge idle" id="statusBadge">READY</span>
-              </div>
-              <div class="diag-item">
-                <span class="diag-label">LATENCY</span>
-                <span class="diag-value" id="latencyValue">-- ms</span>
-              </div>
-              <div class="diag-item">
-                <span class="diag-label">TOKENS (IN / OUT)</span>
-                <span class="diag-value" id="tokensValue">-- / --</span>
-              </div>
-              <div class="diag-item">
-                <span class="diag-label">TOTAL TOKENS</span>
-                <span class="diag-value" id="totalTokensValue">--</span>
-              </div>
-            </div>
-
-            <!-- View Mode Tabs -->
-            <div class="tabs-nav">
-              <button type="button" class="tab-btn active" data-tab="renderedTab">Formatted</button>
-              <button type="button" class="tab-btn" data-tab="jsonTab">Raw JSON</button>
-              <button type="button" class="tab-btn" data-tab="curlTab">cURL</button>
-              <button type="button" class="tab-btn" data-tab="detailsTab">Details</button>
-            </div>
-          </div>
-
-          <!-- Tab Content Panes -->
-          <div class="tabs-viewport">
-            <!-- Formatted Markdown Pane -->
-            <div class="tab-pane active" id="renderedTab">
-              <div class="pane-toolbar">
-                <span class="toolbar-title">Model Response</span>
-                <button type="button" class="btn-ghost-sm" id="copyRenderedBtn">Copy Output</button>
-              </div>
-              <div class="output-content markdown-body" id="renderedOutput">
-                <div class="placeholder-state">
-                  <p>Ready to test. Select your provider, paste your API key and model name, then click <strong>"Test: What is life?"</strong> or <strong>"Send Request"</strong>.</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Raw JSON Pane -->
-            <div class="tab-pane" id="jsonTab">
-              <div class="pane-toolbar">
-                <span class="toolbar-title">Raw Response Payload</span>
-                <button type="button" class="btn-ghost-sm" id="copyJsonBtn">Copy JSON</button>
-              </div>
-              <pre class="code-viewer" id="rawJsonViewer"><code>// Raw JSON response will appear here</code></pre>
-            </div>
-
-            <!-- cURL Pane -->
-            <div class="tab-pane" id="curlTab">
-              <div class="pane-toolbar">
-                <span class="toolbar-title">Generated cURL Command</span>
-                <button type="button" class="btn-ghost-sm" id="copyCurlBtn">Copy cURL</button>
-              </div>
-              <pre class="code-viewer" id="curlViewer"><code># Click Send or Quick Test to inspect cURL command</code></pre>
-            </div>
-
-            <!-- Diagnostics Details Pane -->
-            <div class="tab-pane" id="detailsTab">
-              <div class="pane-toolbar">
-                <span class="toolbar-title">Connection & Diagnostic Metadata</span>
-              </div>
-              <div class="details-grid" id="detailsGrid">
-                <div class="detail-cell">
-                  <span class="cell-label">Resolved Target URL:</span>
-                  <span class="cell-value code" id="detailUrl">--</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="cell-label">Selected Provider:</span>
-                  <span class="cell-value" id="detailProvider">--</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="cell-label">Active Model:</span>
-                  <span class="cell-value" id="detailModel">--</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="cell-label">HTTP Status Code:</span>
-                  <span class="cell-value" id="detailHttpCode">--</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="cell-label">Execution Mode:</span>
-                  <span class="cell-value" id="detailMode">--</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="cell-label">Request Timestamp:</span>
-                  <span class="cell-value" id="detailTimestamp">--</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        </div>
       </main>
     </div>
   </div>
 
+  <!-- Off-Canvas Drawer Overlay Backdrop -->
+  <div id="drawerOverlay" class="drawer-overlay"></div>
+
+  <!-- Off-Canvas Drawer: Custom Headers -->
+  <aside id="headersDrawer" class="slide-drawer" aria-label="Custom HTTP Headers">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <h3>Custom HTTP Headers</h3>
+        <span class="drawer-subtitle">Forwarded with every outgoing request</span>
+      </div>
+      <button type="button" class="btn-drawer-close" id="closeHeadersDrawerBtn">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-section">
+        <span class="section-subtitle">Quick Presets:</span>
+        <div class="preset-pills-row">
+          <button type="button" class="btn-chip" data-header-key="OpenAI-Organization" data-header-val="org-...">OpenAI-Org</button>
+          <button type="button" class="btn-chip" data-header-key="HTTP-Referer" data-header-val="https://omni.watulab.com">OpenRouter Referer</button>
+          <button type="button" class="btn-chip" data-header-key="X-Title" data-header-val="OmniLLM Studio">X-Title</button>
+          <button type="button" class="btn-chip" data-header-key="anthropic-beta" data-header-val="prompt-caching-2024-07-31">Anthropic Cache</button>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="label-row">
+          <span class="section-subtitle">Active Headers List</span>
+          <button type="button" class="btn-text" id="addHeaderRowBtn">+ Add Row</button>
+        </div>
+        <div class="headers-list" id="headersListContainer">
+          <!-- Dynamically populated key-value rows -->
+        </div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button type="button" class="btn-ghost" id="clearAllHeadersBtn">Clear All</button>
+      <button type="button" class="btn-primary" id="saveHeadersBtn">Apply Headers</button>
+    </div>
+  </aside>
+
+  <!-- Off-Canvas Drawer: Function & Tools Calling -->
+  <aside id="toolsDrawer" class="slide-drawer" aria-label="Function and Tool Calling">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <h3>Function & Tool Calling</h3>
+        <span class="drawer-subtitle">JSON Schema specifications for tool use</span>
+      </div>
+      <button type="button" class="btn-drawer-close" id="closeToolsDrawerBtn">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="switch-row">
+        <div class="switch-info">
+          <span class="switch-title">Attach Tools to Request</span>
+          <span class="switch-desc">Enables OpenAI / Anthropic tools parameter</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toolsEnableToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="drawer-section">
+        <span class="section-subtitle">Schema Templates:</span>
+        <div class="preset-pills-row">
+          <button type="button" class="btn-chip" id="templateWeatherBtn">Weather Tool</button>
+          <button type="button" class="btn-chip" id="templateSqlBtn">SQL Query Tool</button>
+          <button type="button" class="btn-chip" id="templateClearBtn">Clear</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="toolsSchemaTextarea">Tools JSON Array Specification</label>
+        <textarea id="toolsSchemaTextarea" rows="12" class="code-textarea" placeholder="[ { &quot;type&quot;: &quot;function&quot;, &quot;function&quot;: { &quot;name&quot;: &quot;get_weather&quot;, ... } } ]"></textarea>
+      </div>
+      <div id="toolsValidationNotice" class="schema-notice">Valid JSON Array format required</div>
+    </div>
+    <div class="drawer-footer">
+      <button type="button" class="btn-primary" id="saveToolsBtn">Apply Tools</button>
+    </div>
+  </aside>
+
   <!-- Notification Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=4.5"></script>
 </body>
 </html>
