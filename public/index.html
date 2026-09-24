@@ -121,7 +121,7 @@
           <div class="form-group">
             <div class="label-row">
               <label for="modelInput">Model Name</label>
-              <button type="button" class="btn-text" id="detectModelsBtn" title="Detect loaded models from server (LM Studio, Ollama, etc.)">↻ Detect Models</button>
+              <button type="button" class="btn-text" id="detectModelsBtn" title="Detect loaded models from server (LM Studio, Ollama, etc.)">Detect Models</button>
             </div>
             <input 
               type="text" 
@@ -145,10 +145,10 @@
               </div>
               <div class="model-status-actions">
                 <button type="button" id="loadModelBtn" class="btn-model-action load" title="Load this model into LM Studio memory/GPU" style="display: none;">
-                  <span>⚡ Load into Memory</span>
+                  <span>Load into Memory</span>
                 </button>
                 <button type="button" id="ejectModelBtn" class="btn-model-action eject" title="Eject this model from memory to free VRAM" style="display: none;">
-                  <span>⏏ Eject</span>
+                  <span>Eject</span>
                 </button>
               </div>
             </div>
@@ -297,7 +297,6 @@
                 <div class="action-buttons">
                   <button type="button" id="clearPromptBtn" class="btn-secondary">Clear</button>
                   <button type="button" id="stopPromptBtn" class="btn-stop" style="display: none;" title="Cancel ongoing request">
-                    <span class="stop-icon">■</span>
                     <span>Stop</span>
                   </button>
                   <button type="button" id="submitPromptBtn" class="btn-primary">
@@ -497,7 +496,7 @@
                   <span class="arena-model-name" id="arenaModelAName">Model A</span>
                 </div>
                 <div class="arena-header-controls">
-                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedA" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
+                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedA" title="Endpoint & Auth Overrides">Auth / URL</button>
                   <span class="badge-status idle" id="arenaStatusA">IDLE</span>
                 </div>
               </div>
@@ -565,7 +564,7 @@
                   <span class="arena-model-name" id="arenaModelBName">Model B</span>
                 </div>
                 <div class="arena-header-controls">
-                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedB" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
+                  <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedB" title="Endpoint & Auth Overrides">Auth / URL</button>
                   <span class="badge-status idle" id="arenaStatusB">IDLE</span>
                 </div>
               </div>
@@ -675,7 +674,7 @@
         <h3>Custom HTTP Headers</h3>
         <span class="drawer-subtitle">Forwarded with every outgoing request</span>
       </div>
-      <button type="button" class="btn-drawer-close" id="closeHeadersDrawerBtn">✕</button>
+      <button type="button" class="btn-drawer-close" id="closeHeadersDrawerBtn">&times;</button>
     </div>
     <div class="drawer-body">
       <div class="drawer-section">
@@ -711,7 +710,7 @@
         <h3>Function & Tool Calling</h3>
         <span class="drawer-subtitle">JSON Schema specifications for tool use</span>
       </div>
-      <button type="button" class="btn-drawer-close" id="closeToolsDrawerBtn">✕</button>
+      <button type="button" class="btn-drawer-close" id="closeToolsDrawerBtn">&times;</button>
     </div>
     <div class="drawer-body">
       <div class="switch-row">

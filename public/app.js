@@ -854,7 +854,7 @@ function addHeaderRow(key = '', val = '') {
   row.innerHTML = `
     <input type="text" class="header-key-input" placeholder="Header Key (e.g. X-Custom-Auth)" value="${escapeHtml(key)}">
     <input type="text" class="header-val-input" placeholder="Header Value" value="${escapeHtml(val)}">
-    <button type="button" class="btn-remove-header" title="Remove header">✕</button>
+    <button type="button" class="btn-remove-header" title="Remove header">&times;</button>
   `;
   row.querySelector('.btn-remove-header').addEventListener('click', () => {
     row.remove();
@@ -1009,7 +1009,7 @@ function renderModelChips(models) {
     let labelHtml = escapeHtml(modelName);
     if (state.provider === 'lmstudio' || state.provider === 'ollama') {
       if (isLoaded) {
-        labelHtml = `<span class="chip-status-tag loaded">● READY</span> ${escapeHtml(modelName)}`;
+        labelHtml = `<span class="chip-status-tag loaded">READY</span> ${escapeHtml(modelName)}`;
       } else {
         labelHtml = `<span class="chip-status-tag ondisk">On Disk</span> ${escapeHtml(modelName)}`;
       }
@@ -1098,7 +1098,7 @@ async function loadSelectedModelIntoMemory() {
 
   const btn = elements.loadModelBtn;
   const originalText = btn.innerHTML;
-  btn.innerHTML = '<span>⚡ Loading into GPU...</span>';
+  btn.innerHTML = '<span>Loading into GPU...</span>';
   btn.disabled = true;
 
   try {
@@ -1136,7 +1136,7 @@ async function ejectSelectedModelFromMemory() {
 
   const btn = elements.ejectModelBtn;
   const originalText = btn.innerHTML;
-  btn.innerHTML = '<span>⏏ Ejecting...</span>';
+  btn.innerHTML = '<span>Ejecting...</span>';
   btn.disabled = true;
 
   try {
@@ -1202,7 +1202,7 @@ async function detectModelsFromServer() {
   const btn = elements.detectModelsBtn;
   if (!btn) return;
   const originalText = btn.textContent;
-  btn.textContent = '↻ Scanning...';
+  btn.textContent = 'Scanning...';
   btn.disabled = true;
 
   const provider = state.provider;
@@ -2050,10 +2050,10 @@ async function runArenaTest() {
   const urlB = (elements.arenaUrlB ? elements.arenaUrlB.value.trim() : '') || PROVIDER_PRESETS[providerB]?.baseUrl;
 
   if (['openai', 'claude', 'gemini', 'deepseek', 'groq', 'openrouter'].includes(providerA) && !keyA) {
-    showToast(`Notice: Model A (${PROVIDER_PRESETS[providerA]?.name}) has no API key entered. Click ⚙ Auth/URL if needed.`, 'error');
+    showToast(`Notice: Model A (${PROVIDER_PRESETS[providerA]?.name}) has no API key entered. Click Auth / URL if needed.`, 'error');
   }
   if (['openai', 'claude', 'gemini', 'deepseek', 'groq', 'openrouter'].includes(providerB) && !keyB) {
-    showToast(`Notice: Model B (${PROVIDER_PRESETS[providerB]?.name}) has no API key entered. Click ⚙ Auth/URL if needed.`, 'error');
+    showToast(`Notice: Model B (${PROVIDER_PRESETS[providerB]?.name}) has no API key entered. Click Auth / URL if needed.`, 'error');
   }
 
   const abortA = new AbortController();
@@ -2064,7 +2064,7 @@ async function runArenaTest() {
 
   elements.runArenaBtn.classList.add('btn-stop');
   const runSpan = elements.runArenaBtn.querySelector('span');
-  if (runSpan) runSpan.textContent = '■ Stop Comparison';
+  if (runSpan) runSpan.textContent = 'Stop Comparison';
 
   if (elements.arenaSummaryBanner) elements.arenaSummaryBanner.style.display = 'none';
 
@@ -2283,7 +2283,7 @@ async function streamArenaModel(side, payload, signal) {
           <div style="font-weight: 600; margin-bottom: 4px;">Execution Error: ${escapeHtml(err.message)}</div>
           <div style="font-size: 0.74rem; color: var(--text-secondary); margin-top: 6px;">
             Target: <strong>${escapeHtml(payload.provider)}</strong> &rarr; <code>${escapeHtml(payload.model)}</code>
-            ${isAuthError ? '<div style="margin-top: 6px; color: var(--accent-primary);">Tip: Missing or invalid API key. Click <strong>⚙ Auth/URL</strong> above to provide the API key for this model.</div>' : ''}
+            ${isAuthError ? '<div style="margin-top: 6px; color: var(--accent-primary);">Tip: Missing or invalid API key. Click <strong>Auth / URL</strong> above to provide the API key for this model.</div>' : ''}
           </div>
         </div>
       `;
@@ -2447,7 +2447,7 @@ async function sendChatMessage() {
 
   elements.chatSendBtn.classList.add('btn-stop');
   const sendSpan = elements.chatSendBtn.querySelector('span');
-  if (sendSpan) sendSpan.textContent = '■ Stop';
+  if (sendSpan) sendSpan.textContent = 'Stop';
 
   // Build full message thread
   const messages = [];
