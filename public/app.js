@@ -99,10 +99,19 @@ const state = {
   baseUrl: PROVIDER_PRESETS.custom.baseUrl,
   model: PROVIDER_PRESETS.custom.defaultModel,
   temperature: 0.7,
+  topP: 1.0,
+  jsonMode: false,
+  seed: null,
+  stop: [],
   maxTokens: 2048,
   stream: true,
   systemPrompt: '',
   timeout: 60,
+  attachedImage: null, // { dataUrl, name, size }
+  chatAttachedImage: null,
+  activeCodeLang: 'curl', // 'curl' | 'python' | 'javascript'
+  arenaWinner: null,
+  pendingToolCall: null,
   activeAbortController: null,
   activeReader: null,
   latencyTimer: null,
@@ -115,6 +124,7 @@ const state = {
   history: [],
   isExecuting: false,
   savedKeys: {},
+  providerMemory: {},
   lastRunDetails: null,
 
   // Studio Extensions
@@ -126,7 +136,9 @@ const state = {
   isArenaExecuting: false,
   isChatExecuting: false,
   lastUpstreamHeaders: null,
-  lastReasoningText: ''
+  lastReasoningText: '',
+  lastToolCalls: null,
+  localServerStatus: {}
 };
 
 // DOM Elements Mapping
@@ -160,8 +172,13 @@ const elements = {
   paramsBody: document.getElementById('paramsBody'),
   tempSlider: document.getElementById('tempSlider'),
   tempValue: document.getElementById('tempValue'),
+  topPSlider: document.getElementById('topPSlider'),
+  topPValue: document.getElementById('topPValue'),
   maxTokensInput: document.getElementById('maxTokensInput'),
   maxTokensValue: document.getElementById('maxTokensValue'),
+  jsonModeToggle: document.getElementById('jsonModeToggle'),
+  seedInput: document.getElementById('seedInput'),
+  stopInput: document.getElementById('stopInput'),
   streamToggle: document.getElementById('streamToggle'),
   timeoutSelect: document.getElementById('timeoutSelect'),
   timeoutValue: document.getElementById('timeoutValue'),
@@ -182,6 +199,14 @@ const elements = {
   submitBtnText: document.getElementById('submitBtnText'),
   runReadyTestBtn: document.getElementById('runReadyTestBtn'),
 
+  // Multimodal Vision Attachments
+  attachmentPreviewBar: document.getElementById('attachmentPreviewBar'),
+  attachmentThumbnailImg: document.getElementById('attachmentThumbnailImg'),
+  attachmentFileName: document.getElementById('attachmentFileName'),
+  attachmentFileSize: document.getElementById('attachmentFileSize'),
+  removeAttachmentBtn: document.getElementById('removeAttachmentBtn'),
+  imageFileInput: document.getElementById('imageFileInput'),
+
   // Diagnostics & Results Bar
   statusBadge: document.getElementById('statusBadge'),
   latencyValue: document.getElementById('latencyValue'),
@@ -196,10 +221,18 @@ const elements = {
   copyReasoningBtn: document.getElementById('copyReasoningBtn'),
   statPromptTokens: document.getElementById('statPromptTokens'),
   statCompletionTokens: document.getElementById('statCompletionTokens'),
+  statTotalTokens: document.getElementById('statTotalTokens'),
   statTps: document.getElementById('statTps'),
   statTtft: document.getElementById('statTtft'),
+  statEstimatedCost: document.getElementById('statEstimatedCost'),
+  statCostTier: document.getElementById('statCostTier'),
+
+  // Code Export
+  codeExportTabBtn: document.getElementById('codeExportTabBtn'),
+  codeSnippetViewer: document.getElementById('codeSnippetViewer'),
+  copyCodeSnippetBtn: document.getElementById('copyCodeSnippetBtn'),
+
   rawJsonViewer: document.getElementById('rawJsonViewer'),
-  curlViewer: document.getElementById('curlViewer'),
   headersViewerContainer: document.getElementById('headersViewerContainer'),
   copyHeadersBtn: document.getElementById('copyHeadersBtn'),
   detailsGrid: document.getElementById('detailsGrid'),
@@ -211,7 +244,6 @@ const elements = {
   detailTimestamp: document.getElementById('detailTimestamp'),
   copyRenderedBtn: document.getElementById('copyRenderedBtn'),
   copyJsonBtn: document.getElementById('copyJsonBtn'),
-  copyCurlBtn: document.getElementById('copyCurlBtn'),
 
   // History
   historyList: document.getElementById('historyList'),
@@ -223,6 +255,22 @@ const elements = {
   arenaSummaryBanner: document.getElementById('arenaSummaryBanner'),
   arenaSummaryText: document.getElementById('arenaSummaryText'),
   arenaSummaryTags: document.getElementById('arenaSummaryTags'),
+  arenaWinnerRow: document.getElementById('arenaWinnerRow'),
+  voteWinnerABtn: document.getElementById('voteWinnerABtn'),
+  voteWinnerTieBtn: document.getElementById('voteWinnerTieBtn'),
+  voteWinnerBBtn: document.getElementById('voteWinnerBBtn'),
+  commitWinnerBtn: document.getElementById('commitWinnerBtn'),
+  exportArenaBtn: document.getElementById('exportArenaBtn'),
+
+  // Arena Toolbar & Sync Controls
+  arenaToolbar: document.getElementById('arenaToolbar'),
+  arenaPullSidebarToABtn: document.getElementById('arenaPullSidebarToABtn'),
+  arenaCopyAtoBBtn: document.getElementById('arenaCopyAtoBBtn'),
+  arenaSwapABBtn: document.getElementById('arenaSwapABBtn'),
+  arenaCopyBtoABtn: document.getElementById('arenaCopyBtoABtn'),
+  arenaPullSidebarToBBtn: document.getElementById('arenaPullSidebarToBBtn'),
+  arenaLockSameProviderCheck: document.getElementById('arenaLockSameProviderCheck'),
+
   // Model A
   arenaCardA: document.getElementById('arenaCardA'),
   arenaModelAName: document.getElementById('arenaModelAName'),
@@ -239,6 +287,11 @@ const elements = {
   arenaLatencyA: document.getElementById('arenaLatencyA'),
   arenaTpsA: document.getElementById('arenaTpsA'),
   arenaTokensA: document.getElementById('arenaTokensA'),
+  arenaPullFromSidebarABtn: document.getElementById('arenaPullFromSidebarABtn'),
+  arenaSameAsBBtn: document.getElementById('arenaSameAsBBtn'),
+  arenaPushToSidebarABtn: document.getElementById('arenaPushToSidebarABtn'),
+  arenaQuickSameProviderABtn: document.getElementById('arenaQuickSameProviderABtn'),
+
   // Model B
   arenaCardB: document.getElementById('arenaCardB'),
   arenaModelBName: document.getElementById('arenaModelBName'),
@@ -255,6 +308,10 @@ const elements = {
   arenaLatencyB: document.getElementById('arenaLatencyB'),
   arenaTpsB: document.getElementById('arenaTpsB'),
   arenaTokensB: document.getElementById('arenaTokensB'),
+  arenaPullFromSidebarBBtn: document.getElementById('arenaPullFromSidebarBBtn'),
+  arenaSameAsABtn: document.getElementById('arenaSameAsABtn'),
+  arenaPushToSidebarBBtn: document.getElementById('arenaPushToSidebarBBtn'),
+  arenaQuickSameProviderBBtn: document.getElementById('arenaQuickSameProviderBBtn'),
 
   // Mode 3: Chat Thread Elements
   chatTurnCount: document.getElementById('chatTurnCount'),
@@ -266,6 +323,11 @@ const elements = {
   emptyChatPlaceholder: document.getElementById('emptyChatPlaceholder'),
   chatInputText: document.getElementById('chatInputText'),
   chatSendBtn: document.getElementById('chatSendBtn'),
+  chatAttachmentPreviewBar: document.getElementById('chatAttachmentPreviewBar'),
+  chatAttachmentThumbnailImg: document.getElementById('chatAttachmentThumbnailImg'),
+  chatAttachmentFileName: document.getElementById('chatAttachmentFileName'),
+  chatRemoveAttachmentBtn: document.getElementById('chatRemoveAttachmentBtn'),
+  chatImageFileInput: document.getElementById('chatImageFileInput'),
 
   // Drawers
   drawerOverlay: document.getElementById('drawerOverlay'),
@@ -283,7 +345,16 @@ const elements = {
   templateClearBtn: document.getElementById('templateClearBtn'),
   toolsSchemaTextarea: document.getElementById('toolsSchemaTextarea'),
   toolsValidationNotice: document.getElementById('toolsValidationNotice'),
-  saveToolsBtn: document.getElementById('saveToolsBtn')
+  saveToolsBtn: document.getElementById('saveToolsBtn'),
+
+  // Tool Simulator Modal
+  toolMockModal: document.getElementById('toolMockModal'),
+  modalToolName: document.getElementById('modalToolName'),
+  modalToolId: document.getElementById('modalToolId'),
+  toolOutputTextarea: document.getElementById('toolOutputTextarea'),
+  closeToolModalBtn: document.getElementById('closeToolModalBtn'),
+  cancelToolModalBtn: document.getElementById('cancelToolModalBtn'),
+  submitToolOutputBtn: document.getElementById('submitToolOutputBtn')
 };
 
 // Initialize Application
@@ -294,8 +365,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initDrawers();
   initChatThread();
   initArenaMode();
-  updateProviderUI(state.provider);
+  initMultimodalVision();
+  initToolModal();
+  updateProviderUI(state.provider, true);
   checkServerHealth();
+
+  // If user was previously on Arena or Chat, restore that view
+  if (state.currentMode && state.currentMode !== 'playground') {
+    switchMode(state.currentMode, true);
+  }
 });
 
 // Theme Management
@@ -320,40 +398,149 @@ function setTheme(themeName, showNotification = false) {
   }
 }
 
-// Load preferences from localStorage
+// Load preferences and all configurations from localStorage
 function loadSavedPreferences() {
   try {
     const savedTheme = localStorage.getItem('omnilm_theme') || 'theme-cream-latte';
     setTheme(savedTheme, false);
 
+    // 1. Restore cached detected models for all providers
+    for (const p of Object.keys(PROVIDER_PRESETS)) {
+      const cached = localStorage.getItem(`omnilm_detected_models_${p}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            PROVIDER_PRESETS[p].models = parsed;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 2. Restore per-provider custom baseUrl & model memory
+    const savedMem = localStorage.getItem('omnilm_provider_memory');
+    if (savedMem) {
+      try {
+        state.providerMemory = JSON.parse(savedMem) || {};
+      } catch (e) {}
+    }
+
+    // 3. Restore saved API keys
     const savedKeys = localStorage.getItem('omnilm_api_keys');
     if (savedKeys) {
       state.savedKeys = JSON.parse(savedKeys);
     }
-    const savedConfig = localStorage.getItem('omnilm_last_config');
-    if (savedConfig) {
-      const config = JSON.parse(savedConfig);
+
+    // 4. Restore Full Workspace State
+    let config = null;
+    const savedAppStateJson = localStorage.getItem('omnilm_app_state');
+    if (savedAppStateJson) {
+      try {
+        config = JSON.parse(savedAppStateJson);
+      } catch (e) {}
+    }
+
+    // Fallback to legacy config if app_state not yet created
+    if (!config) {
+      const savedConfig = localStorage.getItem('omnilm_last_config');
+      if (savedConfig) {
+        try {
+          config = JSON.parse(savedConfig);
+        } catch (e) {}
+      }
+    }
+
+    if (config) {
+      // Active provider
       if (config.provider && PROVIDER_PRESETS[config.provider]) {
         state.provider = config.provider;
-        elements.providerSelect.value = config.provider;
+        if (elements.providerSelect) elements.providerSelect.value = config.provider;
       }
+
+      // Base URL
+      if (config.baseUrl) {
+        state.baseUrl = config.baseUrl;
+        if (elements.baseUrlInput) elements.baseUrlInput.value = config.baseUrl;
+      } else {
+        const defaultBase = PROVIDER_PRESETS[state.provider]?.baseUrl || 'http://localhost:8000/v1';
+        state.baseUrl = defaultBase;
+        if (elements.baseUrlInput) elements.baseUrlInput.value = defaultBase;
+      }
+
+      // Model Identifier
+      if (config.model) {
+        state.model = config.model;
+        if (elements.modelInput) elements.modelInput.value = config.model;
+      } else {
+        const defaultMod = PROVIDER_PRESETS[state.provider]?.defaultModel || 'custom-model';
+        state.model = defaultMod;
+        if (elements.modelInput) elements.modelInput.value = defaultMod;
+      }
+
+      // Parameters
       if (config.temperature !== undefined) {
         state.temperature = config.temperature;
-        elements.tempSlider.value = config.temperature;
-        elements.tempValue.textContent = config.temperature;
+        if (elements.tempSlider) elements.tempSlider.value = config.temperature;
+        if (elements.tempValue) elements.tempValue.textContent = Number(config.temperature).toFixed(1);
+      }
+      if (config.topP !== undefined && elements.topPSlider) {
+        state.topP = config.topP;
+        elements.topPSlider.value = config.topP;
+        if (elements.topPValue) elements.topPValue.textContent = Number(config.topP).toFixed(2);
+      }
+      if (config.jsonMode !== undefined && elements.jsonModeToggle) {
+        state.jsonMode = Boolean(config.jsonMode);
+        elements.jsonModeToggle.checked = Boolean(config.jsonMode);
+      }
+      if (config.seed !== undefined && elements.seedInput) {
+        elements.seedInput.value = config.seed !== null && config.seed !== undefined ? config.seed : '';
+        state.seed = config.seed ? parseInt(config.seed, 10) : null;
+        if (elements.seedValue) elements.seedValue.textContent = config.seed ? config.seed : 'None';
+      }
+      if (config.stop !== undefined && elements.stopInput) {
+        elements.stopInput.value = Array.isArray(config.stop) ? config.stop.join(', ') : (config.stop || '');
+        state.stop = elements.stopInput.value ? elements.stopInput.value.split(',').map(s => s.trim()).filter(Boolean) : [];
       }
       if (config.maxTokens !== undefined) {
         state.maxTokens = config.maxTokens;
-        elements.maxTokensInput.value = config.maxTokens;
-        elements.maxTokensValue.textContent = config.maxTokens;
+        if (elements.maxTokensInput) elements.maxTokensInput.value = config.maxTokens;
+        if (elements.maxTokensValue) elements.maxTokensValue.textContent = config.maxTokens;
       }
       if (config.stream !== undefined) {
-        state.stream = config.stream;
-        elements.streamToggle.checked = config.stream;
+        state.stream = Boolean(config.stream);
+        if (elements.streamToggle) elements.streamToggle.checked = Boolean(config.stream);
+      }
+
+      // System Prompt
+      if (config.systemPrompt !== undefined && elements.systemPromptInput) {
+        state.systemPrompt = config.systemPrompt;
+        elements.systemPromptInput.value = config.systemPrompt;
+        if (elements.chatSystemText) {
+          const sys = config.systemPrompt.trim();
+          elements.chatSystemText.textContent = sys ? (sys.length > 60 ? sys.slice(0, 60) + '...' : sys) : 'Default assistant prompt';
+        }
+      }
+
+      // User Prompt (Playground)
+      if (config.userPrompt !== undefined && elements.userPromptInput) {
+        elements.userPromptInput.value = config.userPrompt;
+        if (elements.charCount) elements.charCount.textContent = `${config.userPrompt.length} chars`;
+      }
+
+      // Parameters accordion state
+      if (config.paramsCollapsed === false && elements.paramsBody && elements.paramsArrow) {
+        elements.paramsBody.classList.remove('collapsed');
+        elements.paramsArrow.classList.add('rotated');
+      }
+
+      // Active Mode Tab
+      if (config.currentMode) {
+        state.currentMode = config.currentMode;
       }
     }
+
     const savedSaveKeyCheck = localStorage.getItem('omnilm_save_keys_enabled');
-    if (savedSaveKeyCheck === 'true') {
+    if (savedSaveKeyCheck === 'true' && elements.saveKeyCheck) {
       elements.saveKeyCheck.checked = true;
     }
 
@@ -403,14 +590,15 @@ function bindEventListeners() {
   // Provider Select Change
   elements.providerSelect.addEventListener('change', (e) => {
     state.provider = e.target.value;
-    updateProviderUI(state.provider);
-    saveConfigPreference();
+    updateProviderUI(state.provider, false);
+    saveAllState();
   });
 
   // Base URL Change
   elements.baseUrlInput.addEventListener('input', (e) => {
     state.baseUrl = e.target.value;
     updateCurlPreview();
+    debouncedSaveState();
   });
 
   // Reset Base URL Button
@@ -420,6 +608,7 @@ function bindEventListeners() {
       elements.baseUrlInput.value = preset.baseUrl;
       state.baseUrl = preset.baseUrl;
       updateCurlPreview();
+      saveAllState();
       showToast('Base URL reset to default', 'info');
     }
   });
@@ -432,6 +621,7 @@ function bindEventListeners() {
       localStorage.setItem('omnilm_api_keys', JSON.stringify(state.savedKeys));
     }
     updateCurlPreview();
+    debouncedSaveState();
   });
 
   // Save Key Checkbox
@@ -447,6 +637,7 @@ function bindEventListeners() {
       localStorage.setItem('omnilm_api_keys', JSON.stringify(state.savedKeys));
       showToast('Key removed from browser storage', 'info');
     }
+    saveAllState();
   });
 
   // Toggle Password Visibility
@@ -464,6 +655,7 @@ function bindEventListeners() {
     if (elements.arenaModelAName) {
       elements.arenaModelAName.textContent = state.model || 'Model A (Primary)';
     }
+    debouncedSaveState();
   });
 
   // Timeout Selector Change
@@ -477,6 +669,7 @@ function bindEventListeners() {
       try {
         localStorage.setItem('omnilm_timeout', val);
       } catch (e) {}
+      saveAllState();
     });
   }
 
@@ -504,6 +697,7 @@ function bindEventListeners() {
   elements.paramsToggle.addEventListener('click', () => {
     const isCollapsed = elements.paramsBody.classList.toggle('collapsed');
     elements.paramsArrow.classList.toggle('rotated', !isCollapsed);
+    saveAllState();
     if (!isCollapsed) {
       setTimeout(() => {
         elements.paramsToggle.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -516,41 +710,116 @@ function bindEventListeners() {
     const val = parseFloat(e.target.value);
     state.temperature = val;
     elements.tempValue.textContent = val.toFixed(1);
-    saveConfigPreference();
-    updateCurlPreview();
+    debouncedSaveState();
+    updateCodeSnippets();
   });
+
+  // Top-P Slider
+  if (elements.topPSlider) {
+    elements.topPSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      state.topP = val;
+      if (elements.topPValue) elements.topPValue.textContent = val.toFixed(2);
+      debouncedSaveState();
+      updateCodeSnippets();
+    });
+  }
+
+  // JSON Mode Toggle
+  if (elements.jsonModeToggle) {
+    elements.jsonModeToggle.addEventListener('change', (e) => {
+      state.jsonMode = e.target.checked;
+      saveAllState();
+      updateCodeSnippets();
+    });
+  }
+
+  // Seed Input
+  if (elements.seedInput) {
+    elements.seedInput.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      state.seed = val ? parseInt(val, 10) : null;
+      if (elements.seedValue) elements.seedValue.textContent = val ? val : 'None';
+      debouncedSaveState();
+      updateCodeSnippets();
+    });
+  }
+
+  // Stop Sequences Input
+  if (elements.stopInput) {
+    elements.stopInput.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      state.stop = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+      debouncedSaveState();
+      updateCodeSnippets();
+    });
+  }
 
   // Max Tokens Input
   elements.maxTokensInput.addEventListener('input', (e) => {
     const val = parseInt(e.target.value, 10) || 2048;
     state.maxTokens = val;
     elements.maxTokensValue.textContent = val;
-    saveConfigPreference();
-    updateCurlPreview();
+    debouncedSaveState();
+    updateCodeSnippets();
   });
 
   // Stream Toggle
   elements.streamToggle.addEventListener('change', (e) => {
     state.stream = e.target.checked;
-    saveConfigPreference();
-    updateCurlPreview();
+    saveAllState();
+    updateCodeSnippets();
   });
 
   // System Prompt Input
   elements.systemPromptInput.addEventListener('input', (e) => {
     state.systemPrompt = e.target.value;
-    updateCurlPreview();
+    updateCodeSnippets();
     if (elements.chatSystemText) {
       const sys = state.systemPrompt.trim();
       elements.chatSystemText.textContent = sys ? (sys.length > 60 ? sys.slice(0, 60) + '...' : sys) : 'Default assistant prompt';
     }
+    debouncedSaveState();
   });
+
+  // System Prompt Presets
+  document.querySelectorAll('.system-presets-row .btn-chip-micro').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.getAttribute('data-sys') || '';
+      elements.systemPromptInput.value = val;
+      state.systemPrompt = val;
+      if (elements.chatSystemText) {
+        elements.chatSystemText.textContent = val ? (val.length > 60 ? val.slice(0, 60) + '...' : sys) : 'Default assistant prompt';
+      }
+      updateCodeSnippets();
+      saveAllState();
+      showToast('System prompt preset loaded', 'info');
+    });
+  });
+
+  // Code Export Language Selection
+  document.querySelectorAll('.code-lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.code-lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.activeCodeLang = btn.getAttribute('data-lang') || 'curl';
+      updateCodeSnippets();
+    });
+  });
+
+  if (elements.copyCodeSnippetBtn) {
+    elements.copyCodeSnippetBtn.addEventListener('click', () => {
+      const text = elements.codeSnippetViewer ? elements.codeSnippetViewer.textContent : '';
+      copyToClipboard(text, `${(state.activeCodeLang || 'code').toUpperCase()} snippet copied to clipboard`);
+    });
+  }
 
   // User Prompt Input
   elements.userPromptInput.addEventListener('input', (e) => {
     const text = e.target.value;
     elements.charCount.textContent = `${text.length} chars`;
     updateCurlPreview();
+    debouncedSaveState();
   });
 
   // Shortcut: Ctrl+Enter to execute prompt in Playground
@@ -565,6 +834,7 @@ function bindEventListeners() {
   elements.runReadyTestBtn.addEventListener('click', () => {
     elements.userPromptInput.value = 'What is life?';
     elements.charCount.textContent = '14 chars';
+    saveAllState();
     executePromptRequest();
   });
 
@@ -579,6 +849,7 @@ function bindEventListeners() {
     elements.charCount.textContent = '0 chars';
     elements.userPromptInput.focus();
     updateCurlPreview();
+    saveAllState();
   });
 
   // Sample prompt chips in console
@@ -588,6 +859,7 @@ function bindEventListeners() {
       elements.userPromptInput.value = text;
       elements.charCount.textContent = `${text.length} chars`;
       updateCurlPreview();
+      saveAllState();
     });
   });
 
@@ -622,10 +894,12 @@ function bindEventListeners() {
     copyToClipboard(text, 'JSON copied to clipboard');
   });
 
-  elements.copyCurlBtn.addEventListener('click', () => {
-    const text = elements.curlViewer.textContent;
-    copyToClipboard(text, 'cURL command copied to clipboard');
-  });
+  if (elements.copyCurlBtn && elements.curlViewer) {
+    elements.copyCurlBtn.addEventListener('click', () => {
+      const text = elements.curlViewer.textContent;
+      copyToClipboard(text, 'cURL command copied to clipboard');
+    });
+  }
 
   if (elements.copyHeadersBtn) {
     elements.copyHeadersBtn.addEventListener('click', () => {
@@ -650,31 +924,40 @@ function bindEventListeners() {
 // ----------------------------------------------------
 function initModeSwitcher() {
   const modeButtons = document.querySelectorAll('.mode-btn');
-  const modeViews = document.querySelectorAll('.mode-view');
 
   modeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetMode = btn.getAttribute('data-mode');
       if (!targetMode) return;
-      state.currentMode = targetMode;
-
-      modeButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      modeViews.forEach(v => v.classList.remove('active'));
-      const activeView = document.getElementById(`${targetMode}ModeView`);
-      if (activeView) activeView.classList.add('active');
-
-      if (targetMode === 'arena') {
-        syncArenaWithCurrentConfig();
-      } else if (targetMode === 'chat') {
-        if (elements.chatSystemText) {
-          const sys = state.systemPrompt.trim();
-          elements.chatSystemText.textContent = sys ? (sys.length > 60 ? sys.slice(0, 60) + '...' : sys) : 'Default assistant prompt';
-        }
-      }
+      switchMode(targetMode, false);
     });
   });
+}
+
+function switchMode(targetMode, silent = false) {
+  if (!targetMode) return;
+  state.currentMode = targetMode;
+
+  const modeButtons = document.querySelectorAll('.mode-btn');
+  const modeViews = document.querySelectorAll('.mode-view');
+
+  modeButtons.forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-mode') === targetMode);
+  });
+  modeViews.forEach(v => {
+    v.classList.toggle('active', v.id === `${targetMode}ModeView`);
+  });
+
+  if (targetMode === 'chat') {
+    if (elements.chatSystemText) {
+      const sys = state.systemPrompt.trim();
+      elements.chatSystemText.textContent = sys ? (sys.length > 60 ? sys.slice(0, 60) + '...' : sys) : 'Default assistant prompt';
+    }
+  }
+
+  if (!silent) {
+    saveAllState();
+  }
 }
 
 // ----------------------------------------------------
@@ -953,38 +1236,124 @@ function validateToolsSchema(showToastOnError = false) {
 // ----------------------------------------------------
 // UI Sync & Provider Updates
 // ----------------------------------------------------
-function updateProviderUI(providerKey) {
+function updateProviderUI(providerKey, isInitialLoad = false) {
   const preset = PROVIDER_PRESETS[providerKey] || PROVIDER_PRESETS.custom;
 
-  // Update Base URL
-  elements.baseUrlInput.value = preset.baseUrl;
-  state.baseUrl = preset.baseUrl;
-
-  // Update Hints
-  elements.endpointHint.textContent = preset.endpointHint;
-  elements.keyHint.textContent = preset.keyHint;
+  // Endpoint Hints
+  if (elements.endpointHint) elements.endpointHint.textContent = preset.endpointHint;
+  if (elements.keyHint) elements.keyHint.textContent = preset.keyHint;
 
   // Restore API key if saved
-  if (state.savedKeys[providerKey]) {
-    elements.apiKeyInput.value = state.savedKeys[providerKey];
+  if (state.savedKeys && state.savedKeys[providerKey]) {
+    if (elements.apiKeyInput) elements.apiKeyInput.value = state.savedKeys[providerKey];
     state.apiKey = state.savedKeys[providerKey];
   } else {
-    elements.apiKeyInput.value = '';
+    if (elements.apiKeyInput) elements.apiKeyInput.value = '';
     state.apiKey = '';
   }
 
-  // Update Model
-  elements.modelInput.value = preset.defaultModel;
-  state.model = preset.defaultModel;
+  if (isInitialLoad) {
+    // Preserve values restored by loadSavedPreferences from localStorage
+    if (elements.baseUrlInput) {
+      if (!elements.baseUrlInput.value) elements.baseUrlInput.value = preset.baseUrl;
+      state.baseUrl = elements.baseUrlInput.value;
+    }
+    if (elements.modelInput) {
+      if (!elements.modelInput.value) elements.modelInput.value = preset.defaultModel;
+      state.model = elements.modelInput.value;
+    }
+  } else {
+    // Switching provider manually: check if user had previously customized this provider
+    const remembered = state.providerMemory && state.providerMemory[providerKey];
+    const targetBaseUrl = remembered?.baseUrl || preset.baseUrl;
+    const targetModel = remembered?.model || preset.defaultModel;
+
+    if (elements.baseUrlInput) elements.baseUrlInput.value = targetBaseUrl;
+    state.baseUrl = targetBaseUrl;
+
+    if (elements.modelInput) elements.modelInput.value = targetModel;
+    state.model = targetModel;
+  }
 
   // Render Model Preset Chips
   renderModelChips(preset.models);
 
-  // Update cURL preview
-  updateCurlPreview();
+  // Update selection
+  updateModelChipSelection();
+
+  // Update code snippets preview
+  updateCodeSnippets();
 
   if (elements.arenaModelAName) {
     elements.arenaModelAName.textContent = state.model || 'Model A (Primary)';
+  }
+
+  // If local provider (LM Studio or Ollama), probe server connectivity
+  if (providerKey === 'lmstudio' || providerKey === 'ollama') {
+    probeLocalServer(providerKey);
+  } else {
+    if (elements.localModelStatusBar) {
+      elements.localModelStatusBar.style.display = 'none';
+    }
+  }
+}
+
+async function probeLocalServer(provider) {
+  if (provider !== 'lmstudio' && provider !== 'ollama') return;
+  const baseUrl = elements.baseUrlInput ? elements.baseUrlInput.value.trim() : (PROVIDER_PRESETS[provider]?.baseUrl || '');
+  const providerName = provider === 'lmstudio' ? 'LM Studio' : 'Ollama';
+
+  if (elements.localModelStatusBar) {
+    elements.localModelStatusBar.style.display = 'flex';
+    elements.modelStatusIndicator.className = 'model-status-indicator checking';
+    elements.modelStatusLabel.innerHTML = `<span style="color:var(--text-muted);">Probing ${providerName} (${baseUrl})...</span>`;
+    if (elements.loadModelBtn) elements.loadModelBtn.style.display = 'none';
+    if (elements.ejectModelBtn) elements.ejectModelBtn.style.display = 'none';
+  }
+
+  try {
+    const url = `/api/models?provider=${encodeURIComponent(provider)}&baseUrl=${encodeURIComponent(baseUrl)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (state.provider !== provider) return;
+
+    if (res.ok && data.success && Array.isArray(data.models)) {
+      if (!state.localServerStatus) state.localServerStatus = {};
+      state.localServerStatus[provider] = true;
+
+      PROVIDER_PRESETS[provider].models = data.models;
+      try {
+        localStorage.setItem(`omnilm_detected_models_${provider}`, JSON.stringify(data.models));
+      } catch (e) {}
+
+      renderModelChips(data.models);
+
+      if (data.activeLoadedModel) {
+        elements.modelInput.value = data.activeLoadedModel;
+        state.model = data.activeLoadedModel;
+        updateModelChipSelection();
+        saveAllState();
+      }
+    } else {
+      throw new Error(data.error || 'Server unreachable');
+    }
+  } catch (err) {
+    if (state.provider !== provider) return;
+    if (!state.localServerStatus) state.localServerStatus = {};
+    state.localServerStatus[provider] = false;
+
+    // Reset models in preset so they are unverified
+    PROVIDER_PRESETS[provider].models = [PROVIDER_PRESETS[provider].defaultModel];
+    renderModelChips(PROVIDER_PRESETS[provider].models);
+
+    if (elements.localModelStatusBar) {
+      elements.localModelStatusBar.style.display = 'flex';
+      elements.modelStatusIndicator.className = 'model-status-indicator offline';
+      elements.modelStatusLabel.innerHTML = `<strong>${providerName} is OFFLINE</strong> · <span style="color:var(--text-muted);">Start local server</span>`;
+      if (elements.loadModelBtn) elements.loadModelBtn.style.display = 'none';
+      if (elements.ejectModelBtn) elements.ejectModelBtn.style.display = 'none';
+    }
   }
 }
 
@@ -996,18 +1365,21 @@ function renderModelChips(models) {
   }
 
   models.forEach(item => {
-    const modelObj = typeof item === 'string' ? { id: item, name: item, isLoaded: true } : item;
-    const modelId = modelObj.id;
-    const modelName = modelObj.name || modelObj.id;
-    const isLoaded = Boolean(modelObj.isLoaded);
+    const isModelObj = typeof item === 'object' && item !== null;
+    const modelId = isModelObj ? item.id : item;
+    const modelName = isModelObj ? (item.name || item.id) : item;
+    // CRITICAL: A model is only loaded if explicitly confirmed by a server scan (item.isLoaded === true)
+    // Static fallback strings (like 'local-model' or 'llama3.2') are UNVERIFIED and must NOT default to true!
+    const isLoaded = isModelObj ? Boolean(item.isLoaded) : false;
+    const hasStatusKnown = isModelObj && typeof item.isLoaded === 'boolean';
 
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.dataset.modelId = modelId;
-    chip.className = 'chip' + (modelId === state.model ? ' active' : '') + (isLoaded ? ' chip-loaded' : ' chip-ondisk');
+    chip.className = 'chip' + (modelId === state.model ? ' active' : '') + (hasStatusKnown ? (isLoaded ? ' chip-loaded' : ' chip-ondisk') : '');
 
     let labelHtml = escapeHtml(modelName);
-    if (state.provider === 'lmstudio' || state.provider === 'ollama') {
+    if ((state.provider === 'lmstudio' || state.provider === 'ollama') && hasStatusKnown) {
       if (isLoaded) {
         labelHtml = `<span class="chip-status-tag loaded">● READY</span> ${escapeHtml(modelName)}`;
       } else {
@@ -1016,8 +1388,8 @@ function renderModelChips(models) {
     }
     chip.innerHTML = labelHtml;
 
-    if (modelObj.size || modelObj.params || modelObj.quantization) {
-      const details = [modelObj.params, modelObj.quantization, modelObj.size, isLoaded ? 'Active in Memory' : 'Stored on Disk'].filter(Boolean).join(' · ');
+    if (isModelObj && (item.size || item.params || item.quantization)) {
+      const details = [item.params, item.quantization, item.size, isLoaded ? 'Active in Memory' : 'Stored on Disk'].filter(Boolean).join(' · ');
       chip.title = `${modelId} (${details})`;
     }
 
@@ -1025,10 +1397,11 @@ function renderModelChips(models) {
       elements.modelInput.value = modelId;
       state.model = modelId;
       updateModelChipSelection();
-      updateCurlPreview();
+      updateCodeSnippets();
       if (elements.arenaModelAName) {
         elements.arenaModelAName.textContent = modelId;
       }
+      saveAllState();
     });
     elements.modelChipsContainer.appendChild(chip);
   });
@@ -1036,7 +1409,7 @@ function renderModelChips(models) {
   // Update status bar for current active model
   const currentModelId = elements.modelInput.value.trim() || state.model;
   const currentObj = models.find(m => (typeof m === 'string' ? m : m.id) === currentModelId);
-  updateModelStatusUI(currentObj || (currentModelId ? { id: currentModelId, name: currentModelId, isLoaded: true } : null));
+  updateModelStatusUI(typeof currentObj === 'object' ? currentObj : (currentModelId ? { id: currentModelId, name: currentModelId } : null));
 }
 
 function updateModelChipSelection() {
@@ -1053,40 +1426,57 @@ function updateModelChipSelection() {
 
   const models = PROVIDER_PRESETS[state.provider]?.models || [];
   const currentObj = models.find(m => (typeof m === 'string' ? m : m.id) === currentVal);
-  updateModelStatusUI(currentObj || (currentVal ? { id: currentVal, name: currentVal, isLoaded: true } : null));
+  updateModelStatusUI(typeof currentObj === 'object' ? currentObj : (currentVal ? { id: currentVal, name: currentVal } : null));
 }
 
 function updateModelStatusUI(modelObj) {
   if (!elements.localModelStatusBar) return;
 
   const isLocalProvider = state.provider === 'lmstudio' || state.provider === 'ollama';
-  if (!isLocalProvider || !modelObj) {
+  if (!isLocalProvider) {
     elements.localModelStatusBar.style.display = 'none';
     return;
   }
 
   elements.localModelStatusBar.style.display = 'flex';
+  const providerName = state.provider === 'lmstudio' ? 'LM Studio' : 'Ollama';
+
+  // If local server is known to be offline:
+  if (state.localServerStatus && state.localServerStatus[state.provider] === false) {
+    elements.modelStatusIndicator.className = 'model-status-indicator offline';
+    elements.modelStatusLabel.innerHTML = `<strong>${providerName} is OFFLINE</strong> · <span style="color:var(--text-muted);">Start local server</span>`;
+    if (elements.loadModelBtn) elements.loadModelBtn.style.display = 'none';
+    if (elements.ejectModelBtn) elements.ejectModelBtn.style.display = 'none';
+    return;
+  }
+
+  // If model status is unverified (not scanned from live server)
+  if (!modelObj || typeof modelObj.isLoaded !== 'boolean') {
+    elements.modelStatusIndicator.className = 'model-status-indicator ondisk';
+    elements.modelStatusLabel.innerHTML = `<strong>${escapeHtml(modelObj?.name || modelObj?.id || state.model || 'Model')}</strong> · <span style="color:var(--text-muted);">Unverified (Click ↻ Detect Models)</span>`;
+    if (elements.loadModelBtn) elements.loadModelBtn.style.display = 'none';
+    if (elements.ejectModelBtn) elements.ejectModelBtn.style.display = 'none';
+    return;
+  }
+
+  const name = modelObj.name || modelObj.id || 'Local Model';
+  const modelId = modelObj.id || modelObj.name || name;
   const isLoaded = Boolean(modelObj.isLoaded);
-  const name = modelObj.name || modelObj.id;
 
   if (isLoaded) {
     elements.modelStatusIndicator.className = 'model-status-indicator loaded';
     elements.modelStatusLabel.innerHTML = `<strong>${escapeHtml(name)}</strong> is <span style="color:#22c55e;font-weight:600;">ACTIVE IN MEMORY</span>`;
     if (elements.loadModelBtn) elements.loadModelBtn.style.display = 'none';
-    if (elements.ejectModelBtn && state.provider === 'lmstudio') {
+    if (elements.ejectModelBtn) {
       elements.ejectModelBtn.style.display = 'inline-block';
-      elements.ejectModelBtn.dataset.modelId = modelObj.id;
-    } else if (elements.ejectModelBtn) {
-      elements.ejectModelBtn.style.display = 'none';
+      elements.ejectModelBtn.dataset.modelId = modelId;
     }
   } else {
     elements.modelStatusIndicator.className = 'model-status-indicator ondisk';
     elements.modelStatusLabel.innerHTML = `<strong>${escapeHtml(name)}</strong> is <span style="color:var(--text-muted);">ON DISK (Not loaded)</span>`;
-    if (elements.loadModelBtn && state.provider === 'lmstudio') {
+    if (elements.loadModelBtn) {
       elements.loadModelBtn.style.display = 'inline-block';
-      elements.loadModelBtn.dataset.modelId = modelObj.id;
-    } else if (elements.loadModelBtn) {
-      elements.loadModelBtn.style.display = 'none';
+      elements.loadModelBtn.dataset.modelId = modelId;
     }
     if (elements.ejectModelBtn) elements.ejectModelBtn.style.display = 'none';
   }
@@ -1167,19 +1557,90 @@ async function ejectSelectedModelFromMemory() {
   }
 }
 
-function saveConfigPreference() {
+let saveStateDebounceTimer = null;
+function debouncedSaveState() {
+  clearTimeout(saveStateDebounceTimer);
+  saveStateDebounceTimer = setTimeout(saveAllState, 250);
+}
+
+function saveAllState() {
   try {
-    const config = {
-      provider: state.provider,
-      temperature: state.temperature,
-      maxTokens: state.maxTokens,
-      stream: state.stream
+    const appState = {
+      version: 2,
+      currentMode: state.currentMode || 'playground',
+      provider: state.provider || 'custom',
+      baseUrl: elements.baseUrlInput ? elements.baseUrlInput.value.trim() : (state.baseUrl || ''),
+      model: elements.modelInput ? elements.modelInput.value.trim() : (state.model || ''),
+      temperature: state.temperature ?? 0.7,
+      topP: state.topP ?? 1.0,
+      jsonMode: elements.jsonModeToggle ? elements.jsonModeToggle.checked : (state.jsonMode ?? false),
+      seed: elements.seedInput ? elements.seedInput.value.trim() : '',
+      stop: elements.stopInput ? elements.stopInput.value.trim() : '',
+      maxTokens: state.maxTokens ?? 2048,
+      stream: elements.streamToggle ? elements.streamToggle.checked : (state.stream ?? true),
+      timeout: state.timeout ?? 60,
+      systemPrompt: elements.systemPromptInput ? elements.systemPromptInput.value : (state.systemPrompt || ''),
+      userPrompt: elements.userPromptInput ? elements.userPromptInput.value : '',
+      paramsCollapsed: elements.paramsBody ? elements.paramsBody.classList.contains('collapsed') : true,
+
+      // Arena Dual Comparison Configuration
+      arenaPrompt: elements.arenaPromptInput ? elements.arenaPromptInput.value : '',
+      arenaLockSameProvider: elements.arenaLockSameProviderCheck ? elements.arenaLockSameProviderCheck.checked : false,
+      arenaA: {
+        provider: elements.arenaModelAProvider ? elements.arenaModelAProvider.value : 'custom',
+        model: elements.arenaModelAInput ? elements.arenaModelAInput.value.trim() : '',
+        baseUrl: elements.arenaUrlA ? elements.arenaUrlA.value.trim() : '',
+        key: elements.arenaKeyA ? elements.arenaKeyA.value.trim() : '',
+        advancedOpen: elements.arenaAdvancedPanelA ? !elements.arenaAdvancedPanelA.classList.contains('collapsed') : false
+      },
+      arenaB: {
+        provider: elements.arenaModelBProvider ? elements.arenaModelBProvider.value : 'openai',
+        model: elements.arenaModelBInput ? elements.arenaModelBInput.value.trim() : '',
+        baseUrl: elements.arenaUrlB ? elements.arenaUrlB.value.trim() : '',
+        key: elements.arenaKeyB ? elements.arenaKeyB.value.trim() : '',
+        advancedOpen: elements.arenaAdvancedPanelB ? !elements.arenaAdvancedPanelB.classList.contains('collapsed') : false
+      }
     };
-    localStorage.setItem('omnilm_last_config', JSON.stringify(config));
-  } catch (e) {
-    // Ignore storage errors
+
+    localStorage.setItem('omnilm_app_state', JSON.stringify(appState));
+
+    // Also update legacy key for backward compatibility
+    localStorage.setItem('omnilm_last_config', JSON.stringify({
+      provider: appState.provider,
+      temperature: appState.temperature,
+      topP: appState.topP,
+      jsonMode: appState.jsonMode,
+      maxTokens: appState.maxTokens,
+      stream: appState.stream
+    }));
+
+    // Update per-provider custom endpoint/model memory
+    if (!state.providerMemory) state.providerMemory = {};
+    if (appState.provider) {
+      state.providerMemory[appState.provider] = {
+        baseUrl: appState.baseUrl,
+        model: appState.model
+      };
+      localStorage.setItem('omnilm_provider_memory', JSON.stringify(state.providerMemory));
+    }
+  } catch (err) {
+    console.warn('Could not save workspace state to localStorage:', err);
   }
 }
+
+function saveConfigPreference() {
+  saveAllState();
+}
+
+// Ensure state is flushed immediately on reload or tab switch
+window.addEventListener('beforeunload', () => {
+  saveAllState();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    saveAllState();
+  }
+});
 
 // Server Health Check
 async function checkServerHealth() {
@@ -1197,17 +1658,32 @@ async function checkServerHealth() {
   }
 }
 
-// Auto-Detect Loaded Models (LM Studio, Ollama, OpenAI-compatible)
+// Auto-Detect Models (Cloud APIs, LM Studio, Ollama, OpenAI-compatible)
 async function detectModelsFromServer() {
   const btn = elements.detectModelsBtn;
   if (!btn) return;
   const originalText = btn.textContent;
-  btn.textContent = '↻ Scanning...';
-  btn.disabled = true;
 
   const provider = state.provider;
-  const baseUrl = elements.baseUrlInput.value.trim() || PROVIDER_PRESETS[provider]?.baseUrl;
-  const apiKey = elements.apiKeyInput.value.trim();
+  const baseUrl = elements.baseUrlInput ? (elements.baseUrlInput.value.trim() || PROVIDER_PRESETS[provider]?.baseUrl) : '';
+  const apiKey = elements.apiKeyInput ? elements.apiKeyInput.value.trim() : '';
+
+  // Cloud provider API key pre-validation
+  const requiresKey = ['openai', 'claude', 'gemini', 'deepseek', 'groq'].includes(provider);
+  if (requiresKey && !apiKey) {
+    showToast(`Please enter your ${PROVIDER_PRESETS[provider]?.name || provider} API key to detect available models.`, 'warning');
+    if (elements.apiKeyInput) {
+      elements.apiKeyInput.focus();
+      elements.apiKeyInput.classList.add('input-highlight');
+      setTimeout(() => {
+        if (elements.apiKeyInput) elements.apiKeyInput.classList.remove('input-highlight');
+      }, 2000);
+    }
+    return;
+  }
+
+  btn.textContent = '↻ Scanning...';
+  btn.disabled = true;
 
   try {
     const url = `/api/models?provider=${encodeURIComponent(provider)}&baseUrl=${encodeURIComponent(baseUrl)}&apiKey=${encodeURIComponent(apiKey)}`;
@@ -1218,33 +1694,61 @@ async function detectModelsFromServer() {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
 
+    if (!state.localServerStatus) state.localServerStatus = {};
+    if (provider === 'lmstudio' || provider === 'ollama') {
+      state.localServerStatus[provider] = true;
+    }
+
     if (!data.models || data.models.length === 0) {
-      showToast(`Connected to server at ${baseUrl}, but no models were found.`, 'info');
+      showToast(`Connected to ${PROVIDER_PRESETS[provider]?.name || provider}, but no chat models were found.`, 'info');
       return;
     }
 
     PROVIDER_PRESETS[provider].models = data.models;
+    try {
+      localStorage.setItem(`omnilm_detected_models_${provider}`, JSON.stringify(data.models));
+    } catch (e) {}
+
     renderModelChips(data.models);
 
     // Prefer active loaded model if present, otherwise first available
     const targetModelId = data.activeLoadedModel || (typeof data.models[0] === 'string' ? data.models[0] : data.models[0]?.id);
     if (targetModelId) {
-      elements.modelInput.value = targetModelId;
+      if (elements.modelInput) elements.modelInput.value = targetModelId;
       state.model = targetModelId;
       updateModelChipSelection();
-      updateCurlPreview();
+      updateCodeSnippets();
       if (elements.arenaModelAName) {
         elements.arenaModelAName.textContent = targetModelId;
       }
+      saveAllState();
     }
 
-    const loadedCount = data.models.filter(m => typeof m === 'object' && m.isLoaded).length;
-    if (loadedCount > 0) {
-      showToast(`Found ${data.models.length} model(s): ${loadedCount} active in memory, ${data.models.length - loadedCount} on disk.`, 'success');
+    // Synchronize Arena preset chips if Arena provider matches
+    if (elements.arenaModelAProvider && elements.arenaModelAProvider.value === provider) {
+      renderArenaPresetChips('A', provider);
+    }
+    if (elements.arenaModelBProvider && elements.arenaModelBProvider.value === provider) {
+      renderArenaPresetChips('B', provider);
+    }
+
+    const isCloud = ['openai', 'claude', 'gemini', 'deepseek', 'groq', 'openrouter'].includes(provider);
+    if (isCloud) {
+      showToast(`Successfully pulled ${data.models.length} model(s) from ${PROVIDER_PRESETS[provider]?.name || provider}!`, 'success');
     } else {
-      showToast(`Detected ${data.models.length} model(s) from server!`, 'success');
+      const loadedCount = data.models.filter(m => typeof m === 'object' && m.isLoaded).length;
+      if (loadedCount > 0) {
+        showToast(`Found ${data.models.length} model(s): ${loadedCount} active in memory, ${data.models.length - loadedCount} on disk.`, 'success');
+      } else {
+        showToast(`Detected ${data.models.length} model(s) from server! (None loaded in memory)`, 'info');
+      }
     }
   } catch (err) {
+    if (provider === 'lmstudio' || provider === 'ollama') {
+      if (!state.localServerStatus) state.localServerStatus = {};
+      state.localServerStatus[provider] = false;
+      updateModelStatusUI(null);
+    }
     showToast(`Model detection failed: ${err.message}`, 'error');
   } finally {
     btn.textContent = originalText;
@@ -1365,7 +1869,19 @@ async function executePromptRequest() {
     if (state.systemPrompt && state.systemPrompt.trim()) {
       messages.push({ role: 'system', content: state.systemPrompt.trim() });
     }
-    messages.push({ role: 'user', content: promptText });
+
+    // Multimodal support: if image is attached, send vision array format
+    if (state.attachedImage && state.attachedImage.dataUrl) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: promptText },
+          { type: 'image_url', image_url: { url: state.attachedImage.dataUrl } }
+        ]
+      });
+    } else {
+      messages.push({ role: 'user', content: promptText });
+    }
 
     const requestBody = {
       provider,
@@ -1379,8 +1895,22 @@ async function executePromptRequest() {
       timeout: state.timeout > 0 ? state.timeout * 1000 : 0
     };
 
+    if (state.topP !== undefined && state.topP !== 1.0) {
+      requestBody.topP = state.topP;
+    }
+    if (state.seed !== null && state.seed !== '') {
+      requestBody.seed = Number(state.seed);
+    }
+    if (state.stop && state.stop.length > 0) {
+      requestBody.stop = state.stop;
+    }
+    if (state.jsonMode) {
+      requestBody.responseFormat = { type: 'json_object' };
+    }
+
     // Attach custom headers if defined
     if (Object.keys(state.customHeaders).length > 0) {
+      requestBody.customHeaders = state.customHeaders;
       requestBody.headers = state.customHeaders;
     }
 
@@ -1485,9 +2015,16 @@ async function handleStreamResponse(response, startTime, promptText) {
           const payload = JSON.parse(jsonStr);
 
           // Capture upstream headers from init event
-          if (payload.upstreamHeaders) {
-            state.lastUpstreamHeaders = payload.upstreamHeaders;
-            renderResponseHeaders(payload.upstreamHeaders);
+          const streamHeaders = payload.upstreamHeaders || payload.headers;
+          if (streamHeaders) {
+            state.lastUpstreamHeaders = streamHeaders;
+            renderResponseHeaders(streamHeaders);
+          }
+
+          // Capture tool calls from stream
+          if (payload.tool_calls && payload.tool_calls.length > 0) {
+            state.lastToolCalls = payload.tool_calls;
+            renderToolCalls(payload.tool_calls);
           }
 
           // Capture reasoning / thinking
@@ -1604,14 +2141,21 @@ async function handleJsonResponse(response, startTime, promptText) {
   if (elements.rawJsonViewer) elements.rawJsonViewer.textContent = JSON.stringify(data, null, 2);
 
   // Capture upstream headers
-  if (data.upstreamHeaders) {
-    state.lastUpstreamHeaders = data.upstreamHeaders;
-    renderResponseHeaders(data.upstreamHeaders);
+  const respHeaders = data.upstreamHeaders || data.headers;
+  if (respHeaders) {
+    state.lastUpstreamHeaders = respHeaders;
+    renderResponseHeaders(respHeaders);
   }
 
   // Capture reasoning
   if (data.reasoning) {
     renderReasoning(data.reasoning);
+  }
+
+  // Capture tool calls
+  if (data.tool_calls && data.tool_calls.length > 0) {
+    state.lastToolCalls = data.tool_calls;
+    renderToolCalls(data.tool_calls);
   }
 
   if (response.ok && data.success) {
@@ -1673,19 +2217,61 @@ async function handleJsonResponse(response, startTime, promptText) {
   }
 }
 
-// Markdown parser & renderer
+// Markdown parser & renderer with syntax highlighting and pre-block copy buttons
 function renderMarkdown(content) {
-  if (window.marked && elements.renderedOutput) {
+  if (!elements.renderedOutput) return;
+
+  let parsedHtml = '';
+  if (window.marked) {
     try {
-      elements.renderedOutput.innerHTML = marked.parse(content);
-      return;
+      parsedHtml = marked.parse(content);
     } catch {
-      // Fallback
+      parsedHtml = `<pre>${escapeHtml(content)}</pre>`;
     }
+  } else {
+    parsedHtml = `<pre>${escapeHtml(content)}</pre>`;
   }
-  if (elements.renderedOutput) {
-    elements.renderedOutput.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+
+  elements.renderedOutput.innerHTML = parsedHtml;
+
+  // Syntax highlighting with highlight.js
+  if (window.hljs) {
+    elements.renderedOutput.querySelectorAll('pre code').forEach((block) => {
+      try {
+        hljs.highlightElement(block);
+      } catch (e) {
+        console.warn('hljs error:', e);
+      }
+    });
   }
+
+  addCopyButtonsToPreBlocks(elements.renderedOutput);
+}
+
+function addCopyButtonsToPreBlocks(container) {
+  if (!container) return;
+  container.querySelectorAll('pre').forEach((pre) => {
+    if (pre.querySelector('.btn-copy-code')) return;
+    pre.style.position = 'relative';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-copy-code';
+    btn.textContent = 'Copy';
+    btn.title = 'Copy code snippet';
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const code = pre.querySelector('code')?.innerText || pre.innerText;
+      copyToClipboard(code, 'Code snippet copied to clipboard');
+      btn.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+      }, 2000);
+    });
+
+    pre.appendChild(btn);
+  });
 }
 
 function renderReasoning(reasoningText) {
@@ -1721,7 +2307,54 @@ ${escapeHtml(message)}
   `;
 }
 
-// Update Token Counters
+// Token Pricing Rates per 1,000,000 tokens (USD)
+const MODEL_PRICING = {
+  'gpt-4o': { input: 2.50, output: 10.00, tier: 'Premium Tier' },
+  'gpt-4o-mini': { input: 0.15, output: 0.60, tier: 'Economy Tier' },
+  'o3-mini': { input: 1.10, output: 4.40, tier: 'Mid Tier' },
+  'o1': { input: 15.00, output: 60.00, tier: 'Frontier Tier' },
+  'claude-3-7-sonnet': { input: 3.00, output: 15.00, tier: 'Premium Tier' },
+  'claude-3-5-sonnet': { input: 3.00, output: 15.00, tier: 'Premium Tier' },
+  'claude-3-5-haiku': { input: 0.80, output: 4.00, tier: 'Economy Tier' },
+  'claude-3-opus': { input: 15.00, output: 75.00, tier: 'Frontier Tier' },
+  'gemini-2.5-flash': { input: 0.10, output: 0.40, tier: 'Ultra Economy' },
+  'gemini-2.0-flash': { input: 0.10, output: 0.40, tier: 'Ultra Economy' },
+  'gemini-1.5-pro': { input: 1.25, output: 5.00, tier: 'Mid Tier' },
+  'deepseek-chat': { input: 0.14, output: 0.28, tier: 'Ultra Economy' },
+  'deepseek-reasoner': { input: 0.55, output: 2.19, tier: 'Economy Tier' },
+  'llama-3.3-70b': { input: 0.59, output: 0.79, tier: 'Economy Open-Weights' },
+  'llama-3.1-8b': { input: 0.05, output: 0.08, tier: 'Ultra Economy' }
+};
+
+function calculateCost(provider, modelId, promptTokens, completionTokens) {
+  if (provider === 'lmstudio' || provider === 'ollama') {
+    return {
+      costFormatted: '$0.000000 (Local / Free)',
+      tier: 'Local Device (Zero API Cost)'
+    };
+  }
+
+  const modelLower = (modelId || '').toLowerCase();
+  let pricing = null;
+  for (const [key, val] of Object.entries(MODEL_PRICING)) {
+    if (modelLower.includes(key)) {
+      pricing = val;
+      break;
+    }
+  }
+
+  if (!pricing) {
+    pricing = { input: 1.00, output: 3.00, tier: 'Standard API Tier' };
+  }
+
+  const cost = ((promptTokens * pricing.input) + (completionTokens * pricing.output)) / 1000000;
+  return {
+    costFormatted: `$${cost.toFixed(6)}`,
+    tier: `${pricing.tier} ($${pricing.input.toFixed(2)} / $${pricing.output.toFixed(2)} per 1M)`
+  };
+}
+
+// Update Token Counters & Tokenomics UI
 function updateTokensUI(usage) {
   const pTokens = usage.prompt_tokens ?? usage.promptTokens ?? usage.input_tokens ?? '--';
   const cTokens = usage.completion_tokens ?? usage.completionTokens ?? usage.output_tokens ?? '--';
@@ -1729,6 +2362,16 @@ function updateTokensUI(usage) {
 
   if (elements.tokensValue) elements.tokensValue.textContent = `${pTokens} / ${cTokens}`;
   if (elements.totalTokensValue) elements.totalTokensValue.textContent = `${tTokens}`;
+
+  if (elements.statPromptTokens) elements.statPromptTokens.textContent = pTokens;
+  if (elements.statCompletionTokens) elements.statCompletionTokens.textContent = cTokens;
+  if (elements.statTotalTokens) elements.statTotalTokens.textContent = tTokens;
+
+  const numP = Number(pTokens) || 0;
+  const numC = Number(cTokens) || 0;
+  const costInfo = calculateCost(state.provider, state.model, numP, numC);
+  if (elements.statEstimatedCost) elements.statEstimatedCost.textContent = costInfo.costFormatted;
+  if (elements.statCostTier) elements.statCostTier.textContent = costInfo.tier;
 }
 
 // Update Status Badge UI
@@ -1763,73 +2406,477 @@ function updateDiagnosticDetails(httpCode, mode, latency) {
   elements.detailTimestamp.textContent = new Date().toLocaleTimeString();
 }
 
-// Dynamically generate copyable cURL command
-function updateCurlPreview() {
+// Multi-Language Code Snippet Generator (cURL, Python SDK, JavaScript Fetch)
+function updateCodeSnippets() {
   const provider = state.provider;
-  const baseUrl = elements.baseUrlInput.value.trim();
-  const model = elements.modelInput.value.trim() || 'gpt-4o';
-  const apiKey = elements.apiKeyInput.value.trim() || 'YOUR_API_KEY';
-  const prompt = elements.userPromptInput.value.trim() || 'What is life?';
+  const baseUrl = elements.baseUrlInput ? elements.baseUrlInput.value.trim() : (PROVIDER_PRESETS[provider]?.baseUrl || 'http://localhost:8000/v1');
+  const model = (elements.modelInput ? elements.modelInput.value.trim() : '') || state.model || 'gpt-4o';
+  const apiKey = (elements.apiKeyInput ? elements.apiKeyInput.value.trim() : '') || state.apiKey || 'YOUR_API_KEY';
+  const prompt = (elements.userPromptInput ? elements.userPromptInput.value.trim() : '') || 'What is life?';
+  const temperature = state.temperature ?? 0.7;
+  const maxTokens = state.maxTokens ?? 2048;
+  const stream = Boolean(state.stream);
+  const sysPrompt = state.systemPrompt ? state.systemPrompt.trim() : '';
 
-  let curl = '';
+  let code = '';
+  const lang = state.activeCodeLang || 'curl';
 
-  if (provider === 'claude' || provider === 'custom_anthropic') {
-    let endpoint = 'https://api.anthropic.com/v1/messages';
-    if (baseUrl) {
-      const cleanUrl = baseUrl.trim().replace(/\/+$/, '');
-      if (cleanUrl.endsWith('/messages')) {
-        endpoint = cleanUrl;
-      } else if (cleanUrl.endsWith('/v1')) {
-        endpoint = `${cleanUrl}/messages`;
-      } else {
-        endpoint = `${cleanUrl}/v1/messages`;
+  if (lang === 'curl') {
+    if (provider === 'claude' || provider === 'custom_anthropic') {
+      let endpoint = 'https://api.anthropic.com/v1/messages';
+      if (baseUrl) {
+        const cleanUrl = baseUrl.trim().replace(/\/+$/, '');
+        if (cleanUrl.endsWith('/messages')) endpoint = cleanUrl;
+        else if (cleanUrl.endsWith('/v1')) endpoint = `${cleanUrl}/messages`;
+        else endpoint = `${cleanUrl}/v1/messages`;
       }
-    }
-
-    let extraHeadersStr = '';
-    if (Object.keys(state.customHeaders).length > 0) {
-      for (const [k, v] of Object.entries(state.customHeaders)) {
-        extraHeadersStr += `  -H "${k}: ${v}" \\\n`;
+      let extraHeadersStr = '';
+      if (Object.keys(state.customHeaders).length > 0) {
+        for (const [k, v] of Object.entries(state.customHeaders)) {
+          extraHeadersStr += `  -H "${k}: ${v}" \\\n`;
+        }
       }
-    }
+      const messagesArr = [{ role: 'user', content: prompt }];
+      const payloadObj = {
+        model,
+        max_tokens: maxTokens,
+        messages: messagesArr
+      };
+      if (sysPrompt) payloadObj.system = sysPrompt;
+      if (temperature !== 1.0) payloadObj.temperature = temperature;
+      if (stream) payloadObj.stream = true;
 
-    curl = `curl ${endpoint} \\
+      code = `curl ${endpoint} \\
   -H "content-type: application/json" \\
   -H "x-api-key: ${apiKey}" \\
   -H "anthropic-version: 2023-06-01" \\
-${extraHeadersStr}  -d '{
-    "model": "${model}",
-    "max_tokens": ${state.maxTokens},
-    "messages": [
-      {"role": "user", "content": ${JSON.stringify(prompt)}}
-    ]
-  }'`;
-  } else {
-    const endpoint = baseUrl.endsWith('/chat/completions')
-      ? baseUrl
-      : `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+${extraHeadersStr}  -d '${JSON.stringify(payloadObj, null, 2).replace(/'/g, `'\\''`)}'`;
+    } else {
+      const endpoint = baseUrl.endsWith('/chat/completions')
+        ? baseUrl
+        : `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    let extraHeadersStr = '';
-    if (Object.keys(state.customHeaders).length > 0) {
-      for (const [k, v] of Object.entries(state.customHeaders)) {
-        extraHeadersStr += `  -H "${k}: ${v}" \\\n`;
+      let extraHeadersStr = '';
+      if (Object.keys(state.customHeaders).length > 0) {
+        for (const [k, v] of Object.entries(state.customHeaders)) {
+          extraHeadersStr += `  -H "${k}: ${v}" \\\n`;
+        }
       }
-    }
 
-    curl = `curl ${endpoint} \\
+      const isReasoning = (m) => {
+        if (!m || typeof m !== 'string') return false;
+        const lower = m.trim().toLowerCase();
+        const base = lower.includes('/') ? lower.split('/').pop() : lower;
+        return base === 'o1' || base.startsWith('o1-') || base === 'o3' || base.startsWith('o3-') || base.startsWith('o4-') || base.includes('-o1') || base.includes('-o3');
+      };
+      const isO1 = isReasoning(model);
+
+      const messagesArr = [];
+      if (sysPrompt) messagesArr.push({ role: isO1 ? 'developer' : 'system', content: sysPrompt });
+      messagesArr.push({ role: 'user', content: prompt });
+
+      const payloadObj = {
+        model,
+        messages: messagesArr,
+        stream
+      };
+      if (isO1) {
+        payloadObj.max_completion_tokens = maxTokens;
+      } else {
+        payloadObj.temperature = temperature;
+        payloadObj.max_tokens = maxTokens;
+        if (state.topP !== undefined && state.topP !== 1.0) payloadObj.top_p = state.topP;
+      }
+      if (state.seed !== null && state.seed !== '') payloadObj.seed = Number(state.seed);
+      if (state.stop && state.stop.length > 0) payloadObj.stop = state.stop;
+      if (state.jsonMode) payloadObj.response_format = { type: 'json_object' };
+
+      code = `curl ${endpoint} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey}" \\
-${extraHeadersStr}  -d '{
-    "model": "${model}",
-    "messages": [
-      {"role": "user", "content": ${JSON.stringify(prompt)}}
+${extraHeadersStr}  -d '${JSON.stringify(payloadObj, null, 2).replace(/'/g, `'\\''`)}'`;
+    }
+  } else if (lang === 'python') {
+    if (provider === 'claude' || provider === 'custom_anthropic') {
+      code = `import os
+from anthropic import Anthropic
+
+client = Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY", "${apiKey}")
+)
+
+response = client.messages.create(
+    model="${model}",
+    max_tokens=${maxTokens},
+    temperature=${temperature},
+    ${sysPrompt ? `system=${JSON.stringify(sysPrompt)},\n    ` : ''}messages=[
+        {"role": "user", "content": ${JSON.stringify(prompt)}}
     ],
-    "temperature": ${state.temperature},
-    "max_tokens": ${state.maxTokens}
-  }'`;
+    stream=${stream ? 'True' : 'False'}
+)
+
+if ${stream ? 'True' : 'False'}:
+    for event in response:
+        if event.type == "content_block_delta" and hasattr(event.delta, "text"):
+            print(event.delta.text, end="", flush=True)
+    print()
+else:
+    print(response.content[0].text)`;
+    } else {
+      const isReasoning = (m) => {
+        if (!m || typeof m !== 'string') return false;
+        const lower = m.trim().toLowerCase();
+        const base = lower.includes('/') ? lower.split('/').pop() : lower;
+        return base === 'o1' || base.startsWith('o1-') || base === 'o3' || base.startsWith('o3-') || base.startsWith('o4-') || base.includes('-o1') || base.includes('-o3');
+      };
+      const isO1 = isReasoning(model);
+
+      code = `import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY", "${apiKey}"),
+    base_url="${baseUrl}"
+)
+
+completion = client.chat.completions.create(
+    model="${model}",
+    messages=[
+        ${sysPrompt ? `{"role": "${isO1 ? 'developer' : 'system'}", "content": ${JSON.stringify(sysPrompt)}},\n        ` : ''}{"role": "user", "content": ${JSON.stringify(prompt)}}
+    ],
+    ${isO1 ? `max_completion_tokens=${maxTokens}` : `temperature=${temperature},\n    max_tokens=${maxTokens}`},
+    stream=${stream ? 'True' : 'False'}${state.seed !== null && state.seed !== '' ? `,\n    seed=${state.seed}` : ''}${state.jsonMode ? `,\n    response_format={"type": "json_object"}` : ''}
+)
+
+if ${stream ? 'True' : 'False'}:
+    for chunk in completion:
+        delta = chunk.choices[0].delta.content or ""
+        print(delta, end="", flush=True)
+    print()
+else:
+    print(completion.choices[0].message.content)`;
+    }
+  } else if (lang === 'javascript') {
+    if (provider === 'claude' || provider === 'custom_anthropic') {
+      code = `// Anthropic Messages API via Fetch
+async function main() {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": "${apiKey}",
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: "${model}",
+      max_tokens: ${maxTokens},
+      temperature: ${temperature},
+      ${sysPrompt ? `system: ${JSON.stringify(sysPrompt)},\n      ` : ''}messages: [
+        { role: "user", content: ${JSON.stringify(prompt)} }
+      ]
+    })
+  });
+
+  const data = await response.json();
+  console.log(data.content?.[0]?.text);
+}
+
+main().catch(console.error);`;
+    } else {
+      const isReasoning = (m) => {
+        if (!m || typeof m !== 'string') return false;
+        const lower = m.trim().toLowerCase();
+        const base = lower.includes('/') ? lower.split('/').pop() : lower;
+        return base === 'o1' || base.startsWith('o1-') || base === 'o3' || base.startsWith('o3-') || base.startsWith('o4-') || base.includes('-o1') || base.includes('-o3');
+      };
+      const isO1 = isReasoning(model);
+      const endpoint = baseUrl.endsWith('/chat/completions')
+        ? baseUrl
+        : `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+      code = `// OpenAI-Compatible Chat Completions via Fetch
+async function main() {
+  const response = await fetch("${endpoint}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer ${apiKey}"
+    },
+    body: JSON.stringify({
+      model: "${model}",
+      messages: [
+        ${sysPrompt ? `{ role: "${isO1 ? 'developer' : 'system'}", content: ${JSON.stringify(sysPrompt)} },\n        ` : ''}{ role: "user", content: ${JSON.stringify(prompt)} }
+      ],
+      ${isO1 ? `max_completion_tokens: ${maxTokens}` : `temperature: ${temperature},\n      max_tokens: ${maxTokens}`},
+      stream: false${state.jsonMode ? ',\n      response_format: { type: "json_object" }' : ''}
+    })
+  });
+
+  const data = await response.json();
+  console.log(data.choices?.[0]?.message?.content);
+}
+
+main().catch(console.error);`;
+    }
   }
 
-  elements.curlViewer.textContent = curl;
+  if (elements.codeSnippetViewer) {
+    elements.codeSnippetViewer.textContent = code;
+  }
+}
+window.updateCurlPreview = updateCodeSnippets;
+
+// Multimodal Vision File Handlers
+function initMultimodalVision() {
+  function handlePlaygroundFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (PNG, JPG, WebP, GIF)', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      state.attachedImage = {
+        dataUrl: e.target.result,
+        name: file.name || 'Pasted Image',
+        size: `${(file.size / 1024).toFixed(1)} KB`
+      };
+      if (elements.attachmentThumbnailImg) elements.attachmentThumbnailImg.src = e.target.result;
+      if (elements.attachmentFileName) elements.attachmentFileName.textContent = state.attachedImage.name;
+      if (elements.attachmentFileSize) elements.attachmentFileSize.textContent = state.attachedImage.size;
+      if (elements.attachmentPreviewBar) elements.attachmentPreviewBar.style.display = 'flex';
+      showToast(`Image attached: ${state.attachedImage.name}`, 'info');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleChatFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      showToast('Please select a valid image file', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      state.chatAttachedImage = {
+        dataUrl: e.target.result,
+        name: file.name || 'Pasted Image',
+        size: `${(file.size / 1024).toFixed(1)} KB`
+      };
+      if (elements.chatAttachmentThumbnailImg) elements.chatAttachmentThumbnailImg.src = e.target.result;
+      if (elements.chatAttachmentFileName) elements.chatAttachmentFileName.textContent = state.chatAttachedImage.name;
+      if (elements.chatAttachmentPreviewBar) elements.chatAttachmentPreviewBar.style.display = 'flex';
+      showToast(`Image attached to chat: ${state.chatAttachedImage.name}`, 'info');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if (elements.imageFileInput) {
+    elements.imageFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) handlePlaygroundFile(file);
+      e.target.value = '';
+    });
+  }
+
+  if (elements.removeAttachmentBtn) {
+    elements.removeAttachmentBtn.addEventListener('click', () => {
+      state.attachedImage = null;
+      if (elements.attachmentPreviewBar) elements.attachmentPreviewBar.style.display = 'none';
+      if (elements.attachmentThumbnailImg) elements.attachmentThumbnailImg.src = '';
+    });
+  }
+
+  if (elements.chatImageFileInput) {
+    elements.chatImageFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) handleChatFile(file);
+      e.target.value = '';
+    });
+  }
+
+  if (elements.chatRemoveAttachmentBtn) {
+    elements.chatRemoveAttachmentBtn.addEventListener('click', () => {
+      state.chatAttachedImage = null;
+      if (elements.chatAttachmentPreviewBar) elements.chatAttachmentPreviewBar.style.display = 'none';
+      if (elements.chatAttachmentThumbnailImg) elements.chatAttachmentThumbnailImg.src = '';
+    });
+  }
+
+  // Global paste handler for pasting screenshots directly from clipboard
+  window.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (state.currentMode === 'chat') {
+          handleChatFile(file);
+        } else {
+          handlePlaygroundFile(file);
+        }
+        break;
+      }
+    }
+  });
+}
+
+// Tool Calls Rendering & Agentic Loop Simulation
+function renderToolCalls(toolCalls) {
+  if (!elements.renderedOutput || !toolCalls || toolCalls.length === 0) return;
+
+  const toolContainer = document.createElement('div');
+  toolContainer.className = 'tool-calls-wrapper';
+
+  toolCalls.forEach((tc, idx) => {
+    const fnName = tc.function?.name || tc.name || 'unnamed_tool';
+    const fnArgs = tc.function?.arguments || tc.arguments || '{}';
+    const callId = tc.id || `call_${idx + 1}`;
+
+    const card = document.createElement('div');
+    card.className = 'tool-call-card';
+    card.innerHTML = `
+      <div class="tool-call-header">
+        <span class="badge-tool-tag">TOOL CALL REQUESTED</span>
+        <strong class="tool-fn-name">${escapeHtml(fnName)}</strong>
+        <span class="tool-call-id code">${escapeHtml(callId)}</span>
+      </div>
+      <div class="tool-args-preview">
+        <pre><code class="language-json">${escapeHtml(typeof fnArgs === 'string' ? fnArgs : JSON.stringify(fnArgs, null, 2))}</code></pre>
+      </div>
+      <div class="tool-call-actions">
+        <button type="button" class="btn-primary btn-tool-simulate" data-tool-id="${escapeHtml(callId)}" data-tool-name="${escapeHtml(fnName)}">
+          Simulate Output & Execute Follow-up
+        </button>
+      </div>
+    `;
+
+    card.querySelector('.btn-tool-simulate').addEventListener('click', () => {
+      openToolModal(callId, fnName, fnArgs);
+    });
+
+    toolContainer.appendChild(card);
+  });
+
+  elements.renderedOutput.appendChild(toolContainer);
+}
+
+function initToolModal() {
+  if (elements.closeToolModalBtn) {
+    elements.closeToolModalBtn.addEventListener('click', () => {
+      if (elements.toolMockModal) elements.toolMockModal.close();
+    });
+  }
+  if (elements.cancelToolModalBtn) {
+    elements.cancelToolModalBtn.addEventListener('click', () => {
+      if (elements.toolMockModal) elements.toolMockModal.close();
+    });
+  }
+  if (elements.submitToolOutputBtn) {
+    elements.submitToolOutputBtn.addEventListener('click', () => {
+      executeToolFollowup();
+    });
+  }
+}
+
+function openToolModal(callId, fnName, fnArgs) {
+  state.pendingToolCall = { callId, fnName, fnArgs };
+  if (elements.modalToolName) elements.modalToolName.textContent = fnName;
+  if (elements.modalToolId) elements.modalToolId.textContent = callId;
+
+  // Pre-fill smart mock output
+  let mockOutput = '{"status": "success", "result": "Sample execution output"}';
+  if (fnName.toLowerCase().includes('weather')) {
+    mockOutput = '{"location": "San Francisco, CA", "temperature": "68°F", "condition": "Sunny", "humidity": "55%"}';
+  } else if (fnName.toLowerCase().includes('sql') || fnName.toLowerCase().includes('db')) {
+    mockOutput = '[{"id": 1, "name": "Alpha Project", "status": "active"}, {"id": 2, "name": "Beta Test", "status": "completed"}]';
+  }
+  if (elements.toolOutputTextarea) elements.toolOutputTextarea.value = mockOutput;
+
+  if (elements.toolMockModal) {
+    elements.toolMockModal.showModal();
+  }
+}
+
+async function executeToolFollowup() {
+  if (!state.pendingToolCall) return;
+  const { callId, fnName } = state.pendingToolCall;
+  const toolResult = elements.toolOutputTextarea ? elements.toolOutputTextarea.value.trim() : '';
+
+  if (elements.toolMockModal) {
+    elements.toolMockModal.close();
+  }
+
+  showToast(`Submitting tool output for ${fnName}...`, 'info');
+
+  const promptText = elements.userPromptInput ? elements.userPromptInput.value.trim() : '';
+  const modelName = elements.modelInput ? elements.modelInput.value.trim() : '';
+  const apiKey = elements.apiKeyInput ? elements.apiKeyInput.value.trim() : '';
+  const provider = state.provider;
+
+  // Build 3-turn message sequence: user -> assistant tool_calls -> tool response
+  const messages = [];
+  if (state.systemPrompt && state.systemPrompt.trim()) {
+    messages.push({ role: 'system', content: state.systemPrompt.trim() });
+  }
+  messages.push({ role: 'user', content: promptText });
+  messages.push({
+    role: 'assistant',
+    content: null,
+    tool_calls: state.lastToolCalls || [{
+      id: callId,
+      type: 'function',
+      function: { name: fnName, arguments: state.pendingToolCall.fnArgs }
+    }]
+  });
+  messages.push({
+    role: 'tool',
+    tool_call_id: callId,
+    content: toolResult
+  });
+
+  const abortController = new AbortController();
+  state.activeAbortController = abortController;
+  setExecutionState(true);
+  const startTime = Date.now();
+
+  try {
+    updateStatusBadge('loading', 'SYNTHESIZING...');
+
+    const requestBody = {
+      provider,
+      baseUrl: elements.baseUrlInput ? elements.baseUrlInput.value.trim() : '',
+      apiKey,
+      model: modelName,
+      messages,
+      temperature: state.temperature,
+      maxTokens: state.maxTokens,
+      stream: state.stream,
+      timeout: state.timeout > 0 ? state.timeout * 1000 : 0
+    };
+
+    if (Object.keys(state.customHeaders).length > 0) {
+      requestBody.customHeaders = state.customHeaders;
+      requestBody.headers = state.customHeaders;
+    }
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal
+    });
+
+    const isSSE = response.headers.get('content-type')?.includes('text/event-stream');
+    if (isSSE && response.ok) {
+      await handleStreamResponse(response, startTime, `[Tool Followup] ${promptText}`);
+    } else {
+      await handleJsonResponse(response, startTime, `[Tool Followup] ${promptText}`);
+    }
+  } catch (err) {
+    renderErrorOutput(`Tool Followup Error: ${err.message}`);
+    showToast(`Tool Followup failed: ${err.message}`, 'error');
+  } finally {
+    setExecutionState(false);
+  }
 }
 
 // Test History management
@@ -1888,6 +2935,9 @@ function initArenaMode() {
         }
       }
     });
+    elements.arenaPromptInput.addEventListener('input', () => {
+      debouncedSaveState();
+    });
   }
 
   // Model A Configuration Events
@@ -1902,12 +2952,20 @@ function initArenaMode() {
       if (elements.arenaKeyA && state.savedKeys[provider]) {
         elements.arenaKeyA.value = state.savedKeys[provider];
       }
+
+      // If Same Provider Lock is enabled, mirror to Model B
+      if (elements.arenaLockSameProviderCheck?.checked) {
+        copyArenaConfig('A', 'B', true);
+      }
+      updateArenaChipsSelection('A');
+      saveAllState();
     });
   }
 
   if (elements.arenaModelAInput) {
     elements.arenaModelAInput.addEventListener('input', () => {
       updateArenaChipsSelection('A');
+      debouncedSaveState();
     });
   }
 
@@ -1915,6 +2973,25 @@ function initArenaMode() {
     elements.arenaToggleAdvancedA.addEventListener('click', () => {
       const isCollapsed = elements.arenaAdvancedPanelA.classList.toggle('collapsed');
       elements.arenaToggleAdvancedA.classList.toggle('active', !isCollapsed);
+      saveAllState();
+    });
+  }
+
+  // Model A Auth / URL live sync if Lock Same Provider is enabled
+  if (elements.arenaKeyA) {
+    elements.arenaKeyA.addEventListener('input', () => {
+      if (elements.arenaLockSameProviderCheck?.checked && elements.arenaKeyB) {
+        elements.arenaKeyB.value = elements.arenaKeyA.value;
+      }
+      debouncedSaveState();
+    });
+  }
+  if (elements.arenaUrlA) {
+    elements.arenaUrlA.addEventListener('input', () => {
+      if (elements.arenaLockSameProviderCheck?.checked && elements.arenaUrlB) {
+        elements.arenaUrlB.value = elements.arenaUrlA.value;
+      }
+      debouncedSaveState();
     });
   }
 
@@ -1930,12 +3007,15 @@ function initArenaMode() {
       if (elements.arenaKeyB && state.savedKeys[provider]) {
         elements.arenaKeyB.value = state.savedKeys[provider];
       }
+      updateArenaChipsSelection('B');
+      saveAllState();
     });
   }
 
   if (elements.arenaModelBInput) {
     elements.arenaModelBInput.addEventListener('input', () => {
       updateArenaChipsSelection('B');
+      debouncedSaveState();
     });
   }
 
@@ -1943,11 +3023,349 @@ function initArenaMode() {
     elements.arenaToggleAdvancedB.addEventListener('click', () => {
       const isCollapsed = elements.arenaAdvancedPanelB.classList.toggle('collapsed');
       elements.arenaToggleAdvancedB.classList.toggle('active', !isCollapsed);
+      saveAllState();
     });
   }
 
-  // Initial sync
-  syncArenaWithCurrentConfig();
+  if (elements.arenaKeyB) {
+    elements.arenaKeyB.addEventListener('input', () => {
+      debouncedSaveState();
+    });
+  }
+  if (elements.arenaUrlB) {
+    elements.arenaUrlB.addEventListener('input', () => {
+      debouncedSaveState();
+    });
+  }
+
+  // Toolbar & Card Action Listeners
+  // 1. Pull from Sidebar
+  if (elements.arenaPullSidebarToABtn) {
+    elements.arenaPullSidebarToABtn.addEventListener('click', () => pullSidebarToArena('A'));
+  }
+  if (elements.arenaPullFromSidebarABtn) {
+    elements.arenaPullFromSidebarABtn.addEventListener('click', () => pullSidebarToArena('A'));
+  }
+  if (elements.arenaPullSidebarToBBtn) {
+    elements.arenaPullSidebarToBBtn.addEventListener('click', () => pullSidebarToArena('B'));
+  }
+  if (elements.arenaPullFromSidebarBBtn) {
+    elements.arenaPullFromSidebarBBtn.addEventListener('click', () => pullSidebarToArena('B'));
+  }
+
+  // 2. Same Provider / Copy A -> B and B -> A
+  if (elements.arenaCopyAtoBBtn) {
+    elements.arenaCopyAtoBBtn.addEventListener('click', () => copyArenaConfig('A', 'B'));
+  }
+  if (elements.arenaSameAsABtn) {
+    elements.arenaSameAsABtn.addEventListener('click', () => copyArenaConfig('A', 'B'));
+  }
+  if (elements.arenaQuickSameProviderBBtn) {
+    elements.arenaQuickSameProviderBBtn.addEventListener('click', () => copyArenaConfig('A', 'B'));
+  }
+
+  if (elements.arenaCopyBtoABtn) {
+    elements.arenaCopyBtoABtn.addEventListener('click', () => copyArenaConfig('B', 'A'));
+  }
+  if (elements.arenaSameAsBBtn) {
+    elements.arenaSameAsBBtn.addEventListener('click', () => copyArenaConfig('B', 'A'));
+  }
+  if (elements.arenaQuickSameProviderABtn) {
+    elements.arenaQuickSameProviderABtn.addEventListener('click', () => copyArenaConfig('B', 'A'));
+  }
+
+  // 3. Swap A <-> B
+  if (elements.arenaSwapABBtn) {
+    elements.arenaSwapABBtn.addEventListener('click', swapArenaConfigs);
+  }
+
+  // 4. Push to Sidebar ("Commit & Push" back to active playground)
+  if (elements.arenaPushToSidebarABtn) {
+    elements.arenaPushToSidebarABtn.addEventListener('click', () => pushArenaToSidebar('A'));
+  }
+  if (elements.arenaPushToSidebarBBtn) {
+    elements.arenaPushToSidebarBBtn.addEventListener('click', () => pushArenaToSidebar('B'));
+  }
+
+  // 5. Lock Same Provider toggle
+  if (elements.arenaLockSameProviderCheck) {
+    elements.arenaLockSameProviderCheck.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        copyArenaConfig('A', 'B', false);
+      }
+      saveAllState();
+    });
+  }
+
+  // A/B Arena Winner Judgments
+  if (elements.voteWinnerABtn) {
+    elements.voteWinnerABtn.addEventListener('click', () => setArenaWinner('A'));
+  }
+  if (elements.voteWinnerTieBtn) {
+    elements.voteWinnerTieBtn.addEventListener('click', () => setArenaWinner('tie'));
+  }
+  if (elements.voteWinnerBBtn) {
+    elements.voteWinnerBBtn.addEventListener('click', () => setArenaWinner('B'));
+  }
+  if (elements.exportArenaBtn) {
+    elements.exportArenaBtn.addEventListener('click', exportArenaComparison);
+  }
+
+  // Initial restore or fallback sync
+  restoreArenaState();
+}
+
+// Pull active sidebar provider, baseUrl, apiKey, and model into Model A or B
+function pullSidebarToArena(side) {
+  const provider = state.provider;
+  const baseUrl = (elements.baseUrlInput ? elements.baseUrlInput.value.trim() : '') || (PROVIDER_PRESETS[provider]?.baseUrl || '');
+  const apiKey = (elements.apiKeyInput ? elements.apiKeyInput.value.trim() : '') || (state.savedKeys[provider] || '');
+  const model = (elements.modelInput ? elements.modelInput.value.trim() : '') || state.model || PROVIDER_PRESETS[provider]?.defaultModel || '';
+
+  const providerSelect = elements[`arenaModel${side}Provider`];
+  const modelInput = elements[`arenaModel${side}Input`];
+  const urlInput = elements[`arenaUrl${side}`];
+  const keyInput = elements[`arenaKey${side}`];
+  const nameLabel = elements[`arenaModel${side}Name`];
+
+  if (providerSelect) providerSelect.value = provider;
+  renderArenaPresetChips(side, provider);
+
+  if (modelInput) modelInput.value = model;
+  if (urlInput) urlInput.value = baseUrl;
+  if (keyInput) keyInput.value = apiKey;
+  if (nameLabel) nameLabel.textContent = model || (`Model ${side}`);
+
+  updateArenaChipsSelection(side);
+
+  // If custom credentials or non-default base URL, reveal advanced panel
+  if (apiKey || (baseUrl && baseUrl !== PROVIDER_PRESETS[provider]?.baseUrl)) {
+    const advPanel = elements[`arenaAdvancedPanel${side}`];
+    const advToggle = elements[`arenaToggleAdvanced${side}`];
+    if (advPanel && advPanel.classList.contains('collapsed')) {
+      advPanel.classList.remove('collapsed');
+      if (advToggle) advToggle.classList.add('active');
+    }
+  }
+
+  showToast(`Imported Sidebar config to Model ${side} (${PROVIDER_PRESETS[provider]?.name || provider}: ${model})`, 'success');
+}
+
+// Copy configuration between Arena models (Same Provider & Auth)
+function copyArenaConfig(fromSide, toSide, silent = false) {
+  const fromProvider = elements[`arenaModel${fromSide}Provider`]?.value || 'custom';
+  const fromUrl = elements[`arenaUrl${fromSide}`]?.value || '';
+  const fromKey = elements[`arenaKey${fromSide}`]?.value || '';
+  const fromModel = elements[`arenaModel${fromSide}Input`]?.value.trim() || '';
+
+  const toProviderSelect = elements[`arenaModel${toSide}Provider`];
+  const toModelInput = elements[`arenaModel${toSide}Input`];
+  const toUrlInput = elements[`arenaUrl${toSide}`];
+  const toKeyInput = elements[`arenaKey${toSide}`];
+  const toNameLabel = elements[`arenaModel${toSide}Name`];
+
+  if (toProviderSelect) toProviderSelect.value = fromProvider;
+  renderArenaPresetChips(toSide, fromProvider);
+
+  if (toUrlInput) toUrlInput.value = fromUrl;
+  if (toKeyInput) toKeyInput.value = fromKey;
+
+  // Pick suitable target model: if same as source, pick an alternative model from preset
+  const presetModels = PROVIDER_PRESETS[fromProvider]?.models || [];
+  let targetModel = toModelInput?.value.trim() || '';
+  const isTargetInPreset = presetModels.some(m => (typeof m === 'object' ? m.id : m) === targetModel);
+
+  if (!targetModel || targetModel === fromModel || !isTargetInPreset) {
+    if (presetModels.length > 1) {
+      const alt = presetModels.find(m => (typeof m === 'object' ? m.id : m) !== fromModel);
+      targetModel = alt ? (typeof alt === 'object' ? alt.id : alt) : fromModel;
+    } else {
+      targetModel = fromModel;
+    }
+  }
+
+  if (toModelInput) toModelInput.value = targetModel;
+  if (toNameLabel) toNameLabel.textContent = targetModel || (`Model ${toSide}`);
+  updateArenaChipsSelection(toSide);
+
+  // Sync advanced panel visibility if overrides present
+  if (fromKey || fromUrl) {
+    const advPanel = elements[`arenaAdvancedPanel${toSide}`];
+    const advToggle = elements[`arenaToggleAdvanced${toSide}`];
+    if (advPanel && advPanel.classList.contains('collapsed')) {
+      advPanel.classList.remove('collapsed');
+      if (advToggle) advToggle.classList.add('active');
+    }
+  }
+
+  if (!silent) {
+    showToast(`Synchronized Model ${toSide} to same provider as Model ${fromSide} (${PROVIDER_PRESETS[fromProvider]?.name || fromProvider})`, 'success');
+  }
+  saveAllState();
+}
+
+// Swap configurations between Model A and Model B
+function swapArenaConfigs() {
+  const provA = elements.arenaModelAProvider?.value;
+  const modA = elements.arenaModelAInput?.value;
+  const urlA = elements.arenaUrlA?.value;
+  const keyA = elements.arenaKeyA?.value;
+  const outA = elements.arenaOutputA?.innerHTML;
+  const ttftA = elements.arenaTtftA?.textContent;
+  const latA = elements.arenaLatencyA?.textContent;
+  const tpsA = elements.arenaTpsA?.textContent;
+  const tokA = elements.arenaTokensA?.textContent;
+
+  const provB = elements.arenaModelBProvider?.value;
+  const modB = elements.arenaModelBInput?.value;
+  const urlB = elements.arenaUrlB?.value;
+  const keyB = elements.arenaKeyB?.value;
+  const outB = elements.arenaOutputB?.innerHTML;
+  const ttftB = elements.arenaTtftB?.textContent;
+  const latB = elements.arenaLatencyB?.textContent;
+  const tpsB = elements.arenaTpsB?.textContent;
+  const tokB = elements.arenaTokensB?.textContent;
+
+  // Set A with B
+  if (elements.arenaModelAProvider) elements.arenaModelAProvider.value = provB;
+  renderArenaPresetChips('A', provB);
+  if (elements.arenaModelAInput) elements.arenaModelAInput.value = modB;
+  if (elements.arenaUrlA) elements.arenaUrlA.value = urlB;
+  if (elements.arenaKeyA) elements.arenaKeyA.value = keyB;
+  if (elements.arenaModelAName) elements.arenaModelAName.textContent = modB;
+  if (elements.arenaOutputA && outB) elements.arenaOutputA.innerHTML = outB;
+  if (elements.arenaTtftA) elements.arenaTtftA.textContent = ttftB;
+  if (elements.arenaLatencyA) elements.arenaLatencyA.textContent = latB;
+  if (elements.arenaTpsA) elements.arenaTpsA.textContent = tpsB;
+  if (elements.arenaTokensA) elements.arenaTokensA.textContent = tokB;
+  updateArenaChipsSelection('A');
+
+  // Set B with A
+  if (elements.arenaModelBProvider) elements.arenaModelBProvider.value = provA;
+  renderArenaPresetChips('B', provA);
+  if (elements.arenaModelBInput) elements.arenaModelBInput.value = modA;
+  if (elements.arenaUrlB) elements.arenaUrlB.value = urlA;
+  if (elements.arenaKeyB) elements.arenaKeyB.value = keyA;
+  if (elements.arenaModelBName) elements.arenaModelBName.textContent = modA;
+  if (elements.arenaOutputB && outA) elements.arenaOutputB.innerHTML = outA;
+  if (elements.arenaTtftB) elements.arenaTtftB.textContent = ttftA;
+  if (elements.arenaLatencyB) elements.arenaLatencyB.textContent = latA;
+  if (elements.arenaTpsB) elements.arenaTpsB.textContent = tpsA;
+  if (elements.arenaTokensB) elements.arenaTokensB.textContent = tokA;
+  updateArenaChipsSelection('B');
+
+  saveAllState();
+  showToast('Swapped Model A and Model B configurations', 'info');
+}
+
+// Push Model A or B configuration back to the main sidebar & playground
+function pushArenaToSidebar(side) {
+  const provider = elements[`arenaModel${side}Provider`]?.value || state.provider;
+  const model = elements[`arenaModel${side}Input`]?.value.trim() || state.model;
+  const url = elements[`arenaUrl${side}`]?.value.trim() || '';
+  const key = elements[`arenaKey${side}`]?.value.trim() || '';
+
+  state.provider = provider;
+  if (elements.providerSelect) {
+    elements.providerSelect.value = provider;
+  }
+  updateProviderUI(provider);
+
+  if (url && elements.baseUrlInput) {
+    elements.baseUrlInput.value = url;
+    state.baseUrl = url;
+  }
+  if (key && elements.apiKeyInput) {
+    elements.apiKeyInput.value = key;
+    state.apiKey = key;
+    if (state.savedKeys) state.savedKeys[provider] = key;
+  }
+  if (model && elements.modelInput) {
+    elements.modelInput.value = model;
+    state.model = model;
+    updateModelChipSelection();
+  }
+  updateCodeSnippets();
+
+  if (elements.modelInput) {
+    elements.modelInput.classList.add('input-highlight');
+    setTimeout(() => {
+      if (elements.modelInput) elements.modelInput.classList.remove('input-highlight');
+    }, 1800);
+  }
+
+  saveAllState();
+  showToast(`Committed Model ${side} (${model}) to Playground Sidebar! Ready to use.`, 'success');
+}
+
+function restoreArenaState() {
+  try {
+    const savedJson = localStorage.getItem('omnilm_app_state');
+    if (!savedJson) {
+      syncArenaWithCurrentConfig();
+      return;
+    }
+    const saved = JSON.parse(savedJson);
+    if (!saved.arenaA && !saved.arenaB) {
+      syncArenaWithCurrentConfig();
+      return;
+    }
+
+    if (saved.arenaPrompt !== undefined && elements.arenaPromptInput) {
+      elements.arenaPromptInput.value = saved.arenaPrompt;
+    }
+
+    if (saved.arenaLockSameProvider !== undefined && elements.arenaLockSameProviderCheck) {
+      elements.arenaLockSameProviderCheck.checked = Boolean(saved.arenaLockSameProvider);
+    }
+
+    if (saved.arenaA) {
+      const pA = saved.arenaA.provider || state.provider || 'custom';
+      if (elements.arenaModelAProvider) {
+        elements.arenaModelAProvider.value = pA;
+      }
+      renderArenaPresetChips('A', pA);
+      if (elements.arenaModelAInput) {
+        elements.arenaModelAInput.value = saved.arenaA.model || PROVIDER_PRESETS[pA]?.defaultModel || 'custom-model';
+      }
+      if (elements.arenaUrlA && saved.arenaA.baseUrl !== undefined) {
+        elements.arenaUrlA.value = saved.arenaA.baseUrl;
+      }
+      if (elements.arenaKeyA && saved.arenaA.key !== undefined) {
+        elements.arenaKeyA.value = saved.arenaA.key;
+      }
+      if (saved.arenaA.advancedOpen && elements.arenaAdvancedPanelA) {
+        elements.arenaAdvancedPanelA.classList.remove('collapsed');
+        if (elements.arenaToggleAdvancedA) elements.arenaToggleAdvancedA.classList.add('active');
+      }
+      updateArenaChipsSelection('A');
+    }
+
+    if (saved.arenaB) {
+      const pB = saved.arenaB.provider || 'openai';
+      if (elements.arenaModelBProvider) {
+        elements.arenaModelBProvider.value = pB;
+      }
+      renderArenaPresetChips('B', pB);
+      if (elements.arenaModelBInput) {
+        elements.arenaModelBInput.value = saved.arenaB.model || PROVIDER_PRESETS[pB]?.defaultModel || 'gpt-4o';
+      }
+      if (elements.arenaUrlB && saved.arenaB.baseUrl !== undefined) {
+        elements.arenaUrlB.value = saved.arenaB.baseUrl;
+      }
+      if (elements.arenaKeyB && saved.arenaB.key !== undefined) {
+        elements.arenaKeyB.value = saved.arenaB.key;
+      }
+      if (saved.arenaB.advancedOpen && elements.arenaAdvancedPanelB) {
+        elements.arenaAdvancedPanelB.classList.remove('collapsed');
+        if (elements.arenaToggleAdvancedB) elements.arenaToggleAdvancedB.classList.add('active');
+      }
+      updateArenaChipsSelection('B');
+    }
+  } catch (err) {
+    console.warn('Error restoring Arena state:', err);
+    syncArenaWithCurrentConfig();
+  }
 }
 
 function syncArenaWithCurrentConfig() {
@@ -1988,15 +3406,22 @@ function renderArenaPresetChips(side, providerKey) {
   const preset = PROVIDER_PRESETS[providerKey];
   if (!preset || !preset.models) return;
 
-  preset.models.forEach(modelName => {
+  preset.models.forEach(item => {
+    const isModelObj = typeof item === 'object' && item !== null;
+    const modelId = isModelObj ? item.id : item;
+    const modelName = isModelObj ? (item.name || item.id) : item;
+
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'chip' + (input && input.value.trim() === modelName ? ' active' : '');
+    chip.dataset.modelId = modelId;
+    chip.className = 'chip' + (input && input.value.trim() === modelId ? ' active' : '');
     chip.textContent = modelName;
+    chip.title = modelId;
     chip.addEventListener('click', () => {
       if (input) {
-        input.value = modelName;
+        input.value = modelId;
         updateArenaChipsSelection(side);
+        saveAllState();
       }
     });
     container.appendChild(chip);
@@ -2010,8 +3435,15 @@ function updateArenaChipsSelection(side) {
 
   const currentVal = input.value.trim();
   container.querySelectorAll('.chip').forEach(c => {
-    c.classList.toggle('active', c.textContent === currentVal);
+    const chipId = c.dataset.modelId || c.textContent.trim();
+    c.classList.toggle('active', chipId === currentVal);
   });
+
+  // Keep card heading dynamically synchronized with selected or typed model
+  const nameEl = elements[`arenaModel${side}Name`];
+  if (nameEl) {
+    nameEl.textContent = currentVal || (`Model ${side}`);
+  }
 }
 
 async function runArenaTest() {
@@ -2109,6 +3541,14 @@ async function runArenaTest() {
       streamArenaModel('B', payloadB, abortB.signal)
     ]);
 
+    lastArenaExecutionData = {
+      prompt: promptText,
+      modelA,
+      modelB,
+      resA: resA.status === 'fulfilled' ? resA.value : { success: false, text: 'Execution failed' },
+      resB: resB.status === 'fulfilled' ? resB.value : { success: false, text: 'Execution failed' }
+    };
+
     renderArenaSummary(
       resA.status === 'fulfilled' ? resA.value : null,
       resB.status === 'fulfilled' ? resB.value : null,
@@ -2158,6 +3598,7 @@ async function streamArenaModel(side, payload, signal) {
   const startTime = Date.now();
   let ttft = null;
   let accumulatedText = '';
+  let accumulatedReasoning = '';
   let usage = null;
   let finalLatency = 0;
 
@@ -2207,35 +3648,81 @@ async function streamArenaModel(side, payload, signal) {
 
         try {
           const item = JSON.parse(jsonStr);
+
+          // Handle reasoning / thinking tokens (GLM, DeepSeek, Qwen)
+          if (item.reasoning) {
+            if (ttft === null) {
+              ttft = Date.now() - startTime;
+              if (ttftEl) ttftEl.textContent = `${ttft} ms`;
+            }
+            accumulatedReasoning += item.reasoning;
+            renderArenaOutput(side, accumulatedText, accumulatedReasoning);
+          }
+
+          // Handle standard content tokens
           if (item.text) {
             if (ttft === null) {
               ttft = Date.now() - startTime;
               if (ttftEl) ttftEl.textContent = `${ttft} ms`;
             }
             accumulatedText += item.text;
-            if (window.marked) {
-              outputEl.innerHTML = marked.parse(accumulatedText);
-            } else {
-              outputEl.innerHTML = `<pre>${escapeHtml(accumulatedText)}</pre>`;
-            }
+            renderArenaOutput(side, accumulatedText, accumulatedReasoning);
           }
+
           if (item.usage) usage = item.usage;
           if (item.done) finalLatency = item.latency || (Date.now() - startTime);
           if (item.error) throw new Error(item.error);
-        } catch {
-          // Chunk parse ignore
+        } catch (parseErr) {
+          if (parseErr.message && !parseErr.message.includes('JSON')) {
+            throw parseErr;
+          }
         }
       }
     }
 
     finalLatency = finalLatency || (Date.now() - startTime);
     if (latencyEl) latencyEl.textContent = `${finalLatency} ms`;
-    if (statusEl) {
-      statusEl.className = 'badge-status success';
-      statusEl.textContent = 'FINISHED';
+
+    const totalChars = accumulatedText.length + accumulatedReasoning.length;
+    const hasOutput = totalChars > 0;
+
+    if (!hasOutput) {
+      if (finalLatency >= 45000) {
+        if (statusEl) {
+          statusEl.className = 'badge-status error';
+          statusEl.textContent = 'TIMEOUT';
+        }
+        if (outputEl) {
+          outputEl.innerHTML = `
+            <div class="arena-error-box" style="color: var(--status-error); background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); padding: 14px; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.5;">
+              <div style="font-weight: 600; margin-bottom: 4px;">Request Timed Out (${Math.round(finalLatency / 1000)}s)</div>
+              <div style="font-size: 0.76rem; color: var(--text-secondary);">No response tokens received from provider <strong>${escapeHtml(payload.provider)}</strong> for model <code>${escapeHtml(payload.model)}</code>. Check API endpoint or try increasing timeout in Model Parameters.</div>
+            </div>
+          `;
+        }
+      } else {
+        if (statusEl) {
+          statusEl.className = 'badge-status warning';
+          statusEl.textContent = 'NO CONTENT';
+        }
+        if (outputEl) {
+          outputEl.innerHTML = `
+            <div class="arena-error-box" style="color: var(--text-muted); background-color: var(--bg-surface-soft); border: 1px dashed var(--border-medium); padding: 14px; font-family: var(--font-mono); font-size: 0.82rem;">
+              [Model finished with 0 tokens returned]
+            </div>
+          `;
+        }
+      }
+    } else {
+      if (statusEl) {
+        statusEl.className = 'badge-status success';
+        statusEl.textContent = 'FINISHED';
+      }
+      renderArenaOutput(side, accumulatedText, accumulatedReasoning);
     }
 
-    const completionTokens = usage?.completion_tokens ?? Math.max(1, Math.ceil(accumulatedText.split(/\s+/).filter(Boolean).length * 1.3));
+    const wordsCount = (accumulatedText + ' ' + accumulatedReasoning).split(/\s+/).filter(Boolean).length;
+    const completionTokens = usage?.completion_tokens ?? Math.max(1, Math.ceil(wordsCount * 1.3));
     if (tokensEl) tokensEl.textContent = `${completionTokens} toks`;
 
     const decodeDuration = Math.max(0.05, (finalLatency - (ttft || 0)) / 1000);
@@ -2249,7 +3736,9 @@ async function streamArenaModel(side, payload, signal) {
       latency: finalLatency,
       tps: Number(tps),
       tokens: completionTokens,
-      success: true
+      text: accumulatedText || accumulatedReasoning,
+      reasoning: accumulatedReasoning,
+      success: hasOutput
     };
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -2268,6 +3757,7 @@ async function streamArenaModel(side, payload, signal) {
         side,
         model: payload.model,
         error: 'Execution stopped',
+        text: accumulatedText || accumulatedReasoning || '[Stopped by user]',
         success: false
       };
     }
@@ -2292,9 +3782,136 @@ async function streamArenaModel(side, payload, signal) {
       side,
       model: payload.model,
       error: err.message,
+      text: `Error: ${err.message}`,
       success: false
     };
   }
+}
+
+function renderArenaOutput(side, text, reasoning) {
+  const outputEl = elements[`arenaOutput${side}`];
+  if (!outputEl) return;
+
+  let html = '';
+
+  if (reasoning && reasoning.trim()) {
+    html += `
+      <details class="arena-thinking-block" open>
+        <summary class="arena-thinking-summary">
+          <span class="thinking-dot"></span>
+          <span>Thinking / Reasoning Process</span>
+          <span class="thinking-count">${reasoning.length} chars</span>
+        </summary>
+        <div class="arena-thinking-content">${escapeHtml(reasoning)}</div>
+      </details>
+    `;
+  }
+
+  if (text && text.trim()) {
+    if (window.marked) {
+      try {
+        html += marked.parse(text);
+      } catch {
+        html += `<pre class="arena-raw-output">${escapeHtml(text)}</pre>`;
+      }
+    } else {
+      html += `<pre class="arena-raw-output">${escapeHtml(text)}</pre>`;
+    }
+  } else if (!reasoning || !reasoning.trim()) {
+    html = '<div class="placeholder-state"><p>Streaming model response...</p></div>';
+  }
+
+  outputEl.innerHTML = html;
+
+  if (window.hljs) {
+    outputEl.querySelectorAll('pre code').forEach((block) => {
+      try {
+        hljs.highlightElement(block);
+      } catch {}
+    });
+  }
+
+  addCopyButtonsToPreBlocks(outputEl);
+}
+
+let lastArenaExecutionData = null;
+
+function setArenaWinner(winner) {
+  state.arenaWinner = winner;
+  [elements.voteWinnerABtn, elements.voteWinnerTieBtn, elements.voteWinnerBBtn].forEach(b => {
+    if (b) b.classList.remove('active-winner');
+  });
+
+  if (winner === 'A' && elements.voteWinnerABtn) {
+    elements.voteWinnerABtn.classList.add('active-winner');
+    showToast('Marked Model A as Winner', 'success');
+  } else if (winner === 'tie' && elements.voteWinnerTieBtn) {
+    elements.voteWinnerTieBtn.classList.add('active-winner');
+    showToast('Marked as Tie / Equal', 'info');
+  } else if (winner === 'B' && elements.voteWinnerBBtn) {
+    elements.voteWinnerBBtn.classList.add('active-winner');
+    showToast('Marked Model B as Winner', 'success');
+  }
+
+  // Configure Commit Winner button
+  if (elements.commitWinnerBtn) {
+    if (winner === 'A' || winner === 'B') {
+      const winModel = elements[`arenaModel${winner}Input`]?.value.trim() || (`Model ${winner}`);
+      elements.commitWinnerBtn.style.display = 'inline-block';
+      elements.commitWinnerBtn.textContent = `Commit Winner (${winner}: ${winModel}) → Sidebar`;
+      elements.commitWinnerBtn.onclick = () => pushArenaToSidebar(winner);
+    } else {
+      elements.commitWinnerBtn.style.display = 'none';
+    }
+  }
+}
+
+function exportArenaComparison() {
+  if (!lastArenaExecutionData) {
+    showToast('No A/B comparison results to export yet. Run a comparison first.', 'info');
+    return;
+  }
+  const { prompt, modelA, modelB, resA, resB } = lastArenaExecutionData;
+  const winner = state.arenaWinner ? (state.arenaWinner === 'tie' ? 'Tie / Equal' : `Model ${state.arenaWinner}`) : 'Unjudged';
+
+  const md = `# OmniLLM A/B Arena Benchmark Report
+**Date:** ${new Date().toLocaleString()}
+**Winner:** ${winner}
+
+## Test Query
+> ${prompt}
+
+---
+
+## Model A: ${modelA}
+- **Provider:** ${elements.arenaModelAProvider ? elements.arenaModelAProvider.value : 'Custom'}
+- **TTFT (Time to First Token):** ${resA?.ttft ?? '--'} ms
+- **Throughput:** ${resA?.tps ?? '--'} TPS
+- **Total Latency:** ${resA?.latency ?? '--'} ms
+- **Tokens Generated:** ${resA?.tokens ?? '--'}
+- **Status:** ${resA?.success ? 'Success' : 'Failed'}
+
+### Output:
+${resA?.text || (elements.arenaOutputA ? elements.arenaOutputA.innerText : 'No output')}
+
+---
+
+## Model B: ${modelB}
+- **Provider:** ${elements.arenaModelBProvider ? elements.arenaModelBProvider.value : 'Custom'}
+- **TTFT (Time to First Token):** ${resB?.ttft ?? '--'} ms
+- **Throughput:** ${resB?.tps ?? '--'} TPS
+- **Total Latency:** ${resB?.latency ?? '--'} ms
+- **Tokens Generated:** ${resB?.tokens ?? '--'}
+- **Status:** ${resB?.success ? 'Success' : 'Failed'}
+
+### Output:
+${resB?.text || (elements.arenaOutputB ? elements.arenaOutputB.innerText : 'No output')}
+
+---
+*Generated by OmniLLM Studio*
+`;
+
+  copyToClipboard(md, 'A/B Arena Benchmark Markdown copied to clipboard');
 }
 
 function renderArenaSummary(resA, resB, modelA, modelB) {
@@ -2352,7 +3969,44 @@ function renderArenaSummary(resA, resB, modelA, modelB) {
 // ----------------------------------------------------
 // Mode 3: Chat Thread Multi-turn Logic
 // ----------------------------------------------------
+function saveChatHistory() {
+  try {
+    localStorage.setItem('omnilm_chat_history', JSON.stringify(state.chatMessages));
+  } catch (e) {
+    console.warn('Could not save chat history:', e);
+  }
+}
+
+function loadChatHistory() {
+  try {
+    const saved = localStorage.getItem('omnilm_chat_history');
+    if (!saved) return;
+    const messages = JSON.parse(saved);
+    if (!Array.isArray(messages) || messages.length === 0) return;
+
+    state.chatMessages = messages;
+    if (elements.emptyChatPlaceholder) {
+      elements.emptyChatPlaceholder.style.display = 'none';
+    }
+    if (elements.chatMessagesStream) {
+      elements.chatMessagesStream.querySelectorAll('.chat-bubble-row').forEach(r => r.remove());
+    }
+
+    messages.forEach((msg, idx) => {
+      appendChatBubble(msg.role, msg.content, msg.time || '', msg.image || null, idx);
+    });
+
+    if (elements.chatTurnCount) {
+      elements.chatTurnCount.textContent = `${Math.ceil(messages.length / 2)} turns`;
+    }
+  } catch (err) {
+    console.warn('Error loading chat history:', err);
+  }
+}
+
 function initChatThread() {
+  loadChatHistory();
+
   if (elements.chatSendBtn) {
     elements.chatSendBtn.addEventListener('click', sendChatMessage);
   }
@@ -2380,6 +4034,7 @@ function initChatThread() {
       if (elements.chatTurnCount) {
         elements.chatTurnCount.textContent = '0 turns';
       }
+      saveChatHistory();
       showToast('Chat thread reset', 'info');
     });
   }
@@ -2434,9 +4089,16 @@ async function sendChatMessage() {
 
   // Append User Message
   const now = new Date().toLocaleTimeString();
-  const userMsg = { role: 'user', content: text, time: now };
+  const userImg = state.chatAttachedImage ? { ...state.chatAttachedImage } : null;
+  const userMsg = { role: 'user', content: text, image: userImg, time: now };
   state.chatMessages.push(userMsg);
-  appendChatBubble('user', text, now);
+  saveChatHistory();
+  appendChatBubble('user', text, now, userImg, state.chatMessages.length - 1);
+
+  // Clear chat attachment preview
+  state.chatAttachedImage = null;
+  if (elements.chatAttachmentPreviewBar) elements.chatAttachmentPreviewBar.style.display = 'none';
+  if (elements.chatAttachmentThumbnailImg) elements.chatAttachmentThumbnailImg.src = '';
 
   // Append Assistant Placeholder Bubble
   const assistantBubble = appendChatBubble('assistant', '<div class="chat-thinking-indicator">Thinking...</div>', now);
@@ -2455,7 +4117,17 @@ async function sendChatMessage() {
     messages.push({ role: 'system', content: state.systemPrompt.trim() });
   }
   state.chatMessages.forEach(m => {
-    messages.push({ role: m.role, content: m.content });
+    if (m.image && m.image.dataUrl) {
+      messages.push({
+        role: m.role,
+        content: [
+          { type: 'text', text: m.content },
+          { type: 'image_url', image_url: { url: m.image.dataUrl } }
+        ]
+      });
+    } else {
+      messages.push({ role: m.role, content: m.content });
+    }
   });
 
   const payload = {
@@ -2515,11 +4187,7 @@ async function sendChatMessage() {
           const item = JSON.parse(jsonStr);
           if (item.text) {
             accumulatedContent += item.text;
-            if (window.marked) {
-              assistantBubble.querySelector('.bubble-text').innerHTML = marked.parse(accumulatedContent);
-            } else {
-              assistantBubble.querySelector('.bubble-text').innerHTML = `<pre>${escapeHtml(accumulatedContent)}</pre>`;
-            }
+            renderChatBubbleContent(assistantBubble, accumulatedContent);
             scrollChatToBottom();
           }
           if (item.error) throw new Error(item.error);
@@ -2535,6 +4203,7 @@ async function sendChatMessage() {
       content: accumulatedContent,
       time: new Date().toLocaleTimeString()
     });
+    saveChatHistory();
 
     if (elements.chatTurnCount) {
       elements.chatTurnCount.textContent = `${Math.ceil(state.chatMessages.length / 2)} turns`;
@@ -2543,12 +4212,13 @@ async function sendChatMessage() {
     if (err.name === 'AbortError') {
       const notice = '<div class="chat-stopped-notice" style="color: var(--text-muted); font-size: 0.78rem; margin-top: 6px; font-style: italic;">[Response stopped by user or timed out]</div>';
       if (accumulatedContent) {
-        assistantBubble.querySelector('.bubble-text').innerHTML = (window.marked ? marked.parse(accumulatedContent) : `<pre>${escapeHtml(accumulatedContent)}</pre>`) + notice;
+        renderChatBubbleContent(assistantBubble, accumulatedContent + '\n\n' + notice);
         state.chatMessages.push({
           role: 'assistant',
           content: accumulatedContent + ' [Stopped]',
           time: new Date().toLocaleTimeString()
         });
+        saveChatHistory();
       } else {
         assistantBubble.querySelector('.bubble-text').innerHTML = notice;
       }
@@ -2565,18 +4235,100 @@ async function sendChatMessage() {
   }
 }
 
-function appendChatBubble(role, contentHtml, time) {
+function renderChatBubbleContent(bubbleRow, rawContent) {
+  const textEl = bubbleRow.querySelector('.bubble-text');
+  if (!textEl) return;
+
+  // Check for <think> tags from reasoning models (e.g. DeepSeek R1)
+  let formatted = rawContent;
+  let thinkingHtml = '';
+
+  if (formatted.includes('<think>')) {
+    const thinkMatch = formatted.match(/<think>([\s\S]*?)(?:<\/think>|$)/i);
+    if (thinkMatch) {
+      const thinkContent = thinkMatch[1].trim();
+      thinkingHtml = `<details class="chat-thinking-block" open><summary>Thinking Process</summary><div class="thinking-content">${escapeHtml(thinkContent)}</div></details>`;
+      formatted = formatted.replace(/<think>[\s\S]*?(?:<\/think>|$)/i, '').trim();
+    }
+  }
+
+  let bodyHtml = '';
+  if (window.marked && formatted) {
+    try {
+      bodyHtml = marked.parse(formatted);
+    } catch {
+      bodyHtml = `<pre>${escapeHtml(formatted)}</pre>`;
+    }
+  } else if (formatted) {
+    bodyHtml = `<pre>${escapeHtml(formatted)}</pre>`;
+  }
+
+  textEl.innerHTML = thinkingHtml + bodyHtml;
+
+  if (window.hljs) {
+    textEl.querySelectorAll('pre code').forEach((block) => {
+      try { hljs.highlightElement(block); } catch (e) {}
+    });
+  }
+}
+
+function appendChatBubble(role, contentHtml, time, imageObj = null, msgIndex = null) {
   const row = document.createElement('div');
   row.className = `chat-bubble-row ${role}`;
+
+  let imageHtml = '';
+  if (imageObj && imageObj.dataUrl) {
+    imageHtml = `<div class="chat-attached-image-wrap"><img src="${imageObj.dataUrl}" class="chat-attached-image" alt="${escapeHtml(imageObj.name || 'Attached')}"></div>`;
+  }
+
   row.innerHTML = `
-    <div class="chat-bubble">
+    <div class="chat-bubble ${role}">
       <div class="bubble-header">
         <span class="bubble-role">${role === 'user' ? 'YOU' : 'ASSISTANT'}</span>
-        <span class="bubble-time">${time}</span>
+        <div class="bubble-actions">
+          <span class="bubble-time">${time}</span>
+          <button type="button" class="btn-bubble-action btn-bubble-copy" title="Copy message text">Copy</button>
+          <button type="button" class="btn-bubble-action btn-bubble-delete" title="Delete message">✕</button>
+        </div>
       </div>
+      ${imageHtml}
       <div class="bubble-text markdown-body">${contentHtml.startsWith('<') ? contentHtml : escapeHtml(contentHtml)}</div>
     </div>
   `;
+
+  // Message Copy Action
+  row.querySelector('.btn-bubble-copy')?.addEventListener('click', () => {
+    const textToCopy = row.querySelector('.bubble-text')?.innerText || '';
+    copyToClipboard(textToCopy, 'Message text copied to clipboard');
+  });
+
+  // Message Delete Action
+  row.querySelector('.btn-bubble-delete')?.addEventListener('click', () => {
+    row.remove();
+    const remaining = elements.chatMessagesStream.querySelectorAll('.chat-bubble-row');
+    if (remaining.length === 0) {
+      state.chatMessages = [];
+      if (elements.emptyChatPlaceholder) elements.emptyChatPlaceholder.style.display = 'flex';
+      if (elements.chatTurnCount) elements.chatTurnCount.textContent = '0 turns';
+    } else {
+      if (msgIndex !== null && msgIndex < state.chatMessages.length) {
+        state.chatMessages.splice(msgIndex, 1);
+      }
+      if (elements.chatTurnCount) {
+        elements.chatTurnCount.textContent = `${Math.ceil(state.chatMessages.length / 2)} turns`;
+      }
+    }
+    saveChatHistory();
+    showToast('Message deleted', 'info');
+  });
+
+  // Code syntax highlighting if needed
+  if (window.hljs) {
+    row.querySelectorAll('pre code').forEach((block) => {
+      try { hljs.highlightElement(block); } catch (e) {}
+    });
+  }
+
   elements.chatMessagesStream.appendChild(row);
   scrollChatToBottom();
   return row;

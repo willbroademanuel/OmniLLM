@@ -8,9 +8,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="style.css?v=4.5">
+  <link rel="stylesheet" href="style.css?v=4.7">
   <!-- Marked.js for markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body class="theme-cream-latte">
   <div class="app-layout">
@@ -32,6 +35,12 @@
       </div>
 
       <div class="header-status">
+        <!-- Live Express Gateway Health Status -->
+        <div class="server-status-pill" id="serverStatusBadge" title="OmniLLM Gateway Health">
+          <span class="status-dot"></span>
+          <span id="serverStatusText">Server: Online</span>
+        </div>
+
         <div class="theme-picker-wrapper">
           <label for="themeSelect" class="theme-label">Theme</label>
           <select id="themeSelect" class="theme-select" aria-label="Color Theme">
@@ -121,7 +130,7 @@
           <div class="form-group">
             <div class="label-row">
               <label for="modelInput">Model Name</label>
-              <button type="button" class="btn-text" id="detectModelsBtn" title="Detect loaded models from server (LM Studio, Ollama, etc.)">↻ Detect Models</button>
+              <button type="button" class="btn-text" id="detectModelsBtn" title="Detect available models from API key or server (OpenAI, Claude, Gemini, Groq, Ollama, LM Studio, etc.)">↻ Detect Models</button>
             </div>
             <input 
               type="text" 
@@ -183,6 +192,15 @@
                 <input type="range" id="tempSlider" min="0" max="2" step="0.1" value="0.7">
               </div>
 
+              <!-- Top P (Nucleus Sampling) -->
+              <div class="param-row">
+                <div class="param-label">
+                  <span>Top P</span>
+                  <span class="param-val" id="topPValue">1.0</span>
+                </div>
+                <input type="range" id="topPSlider" min="0" max="1" step="0.05" value="1.0">
+              </div>
+
               <!-- Max Tokens -->
               <div class="param-row">
                 <div class="param-label">
@@ -190,6 +208,33 @@
                   <span class="param-val" id="maxTokensValue">2048</span>
                 </div>
                 <input type="number" id="maxTokensInput" min="1" max="64000" value="2048" class="number-input">
+              </div>
+
+              <!-- JSON Mode Switch -->
+              <div class="switch-row">
+                <div class="switch-info">
+                  <span class="switch-title">JSON Object Mode</span>
+                  <span class="switch-desc">Enforce response_format: json_object</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="jsonModeToggle">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <!-- Seed Input -->
+              <div class="param-row">
+                <div class="param-label">
+                  <span>Seed</span>
+                  <span class="param-val" id="seedValue">None</span>
+                </div>
+                <input type="number" id="seedInput" placeholder="Deterministic seed (e.g. 42)" class="number-input">
+              </div>
+
+              <!-- Stop Sequences -->
+              <div class="form-group margin-top-xs">
+                <label for="stopInput">Stop Sequences (comma-separated)</label>
+                <input type="text" id="stopInput" placeholder="e.g. \n\n, User:, END" class="text-input-compact" autocomplete="off" spellcheck="false">
               </div>
 
               <!-- Streaming Switch -->
@@ -222,7 +267,16 @@
 
               <!-- System Prompt -->
               <div class="form-group margin-top-sm">
-                <label for="systemPromptInput">System Prompt</label>
+                <div class="label-row">
+                  <label for="systemPromptInput">System Prompt</label>
+                  <span class="field-hint">Instruction</span>
+                </div>
+                <div class="system-presets-row">
+                  <button type="button" class="btn-chip-micro" data-sys="You are an expert software engineer and systems architect. Write concise, optimal, robust code with zero fluff.">Coder</button>
+                  <button type="button" class="btn-chip-micro" data-sys="You are a data extraction engine. Always output strictly valid RFC 8259 JSON with no markdown formatting or explanations.">Strict JSON</button>
+                  <button type="button" class="btn-chip-micro" data-sys="You are a rigorous, highly concise analytical assistant. Answer directly and precisely in 1-2 paragraphs max.">Concise</button>
+                  <button type="button" class="btn-chip-micro" data-sys="">Clear</button>
+                </div>
                 <textarea 
                   id="systemPromptInput" 
                   rows="2" 
@@ -284,14 +338,31 @@
             </div>
 
             <div class="console-input-area">
+              <!-- Attached Image Preview Bar -->
+              <div class="attachment-preview-bar" id="attachmentPreviewBar" style="display: none;">
+                <div class="attachment-thumbnail-card">
+                  <img id="attachmentThumbnailImg" alt="Attached preview">
+                  <div class="attachment-meta">
+                    <span class="attachment-name" id="attachmentFileName">image.png</span>
+                    <span class="attachment-size" id="attachmentFileSize">0 KB</span>
+                  </div>
+                  <button type="button" class="btn-attachment-remove" id="removeAttachmentBtn" title="Remove attached image">✕</button>
+                </div>
+              </div>
+
               <textarea 
                 id="userPromptInput" 
-                placeholder="Type your prompt here, or click 'Test: What is life?' above... (Press Ctrl+Enter to submit)"
+                placeholder="Type your prompt here, or paste an image from clipboard... (Press Ctrl+Enter to submit)"
                 rows="4"
               >What is life?</textarea>
               <div class="console-actions-bar">
                 <div class="console-meta">
                   <span id="charCount">14 chars</span>
+                  <label class="btn-attach-image" title="Attach an image for vision models (PNG, JPG, WebP)">
+                    <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+                    <span class="attach-icon">📷</span>
+                    <span>Attach Image</span>
+                  </label>
                   <span class="key-hint-badge">Ctrl + Enter</span>
                 </div>
                 <div class="action-buttons">
@@ -322,8 +393,8 @@
                   <span class="diag-value" id="latencyValue">-- ms</span>
                 </div>
                 <div class="diag-item">
-                  <span class="diag-label">TOKENS (IN / OUT)</span>
-                  <span class="diag-value" id="tokensValue">-- / --</span>
+                  <span class="diag-label">TOKENS (IN / OUT / TOTAL)</span>
+                  <span class="diag-value"><span id="tokensValue">-- / --</span> <span class="diag-sub-tokens">(<span id="totalTokensValue">--</span>)</span></span>
                 </div>
                 <div class="diag-item">
                   <span class="diag-label">SPEED</span>
@@ -335,9 +406,9 @@
               <div class="tabs-nav">
                 <button type="button" class="tab-btn active" data-tab="renderedTab">Formatted</button>
                 <button type="button" class="tab-btn" data-tab="reasoningTab" id="reasoningTabBtn">Reasoning</button>
+                <button type="button" class="tab-btn" data-tab="codeExportTab" id="codeExportTabBtn">Code Export</button>
                 <button type="button" class="tab-btn" data-tab="tokenomicsTab">Tokenomics</button>
                 <button type="button" class="tab-btn" data-tab="jsonTab">Raw JSON</button>
-                <button type="button" class="tab-btn" data-tab="curlTab">cURL</button>
                 <button type="button" class="tab-btn" data-tab="headersTab">Headers</button>
                 <button type="button" class="tab-btn" data-tab="detailsTab">Details</button>
               </div>
@@ -371,10 +442,23 @@
                 </div>
               </div>
 
+              <!-- Code Export Pane (cURL, Python, JavaScript) -->
+              <div class="tab-pane" id="codeExportTab">
+                <div class="pane-toolbar">
+                  <div class="code-lang-selector">
+                    <button type="button" class="code-lang-btn active" data-lang="curl">cURL</button>
+                    <button type="button" class="code-lang-btn" data-lang="python">Python (SDK)</button>
+                    <button type="button" class="code-lang-btn" data-lang="javascript">JavaScript (Fetch)</button>
+                  </div>
+                  <button type="button" class="btn-ghost-sm" id="copyCodeSnippetBtn">Copy Code</button>
+                </div>
+                <pre class="code-viewer"><code id="codeSnippetViewer" class="language-bash"># Click Send or Quick Test to inspect code snippets</code></pre>
+              </div>
+
               <!-- Tokenomics & Throughput Pane -->
               <div class="tab-pane" id="tokenomicsTab">
                 <div class="pane-toolbar">
-                  <span class="toolbar-title">Tokenomics & Generation Speed</span>
+                  <span class="toolbar-title">Tokenomics, Cost & Generation Speed</span>
                 </div>
                 <div class="tokenomics-grid">
                   <div class="stat-card">
@@ -388,6 +472,11 @@
                     <span class="stat-sub">Generated output tokens</span>
                   </div>
                   <div class="stat-card">
+                    <span class="stat-label">Total Tokens</span>
+                    <span class="stat-num" id="statTotalTokens">--</span>
+                    <span class="stat-sub">Combined request tokens</span>
+                  </div>
+                  <div class="stat-card">
                     <span class="stat-label">Generation Speed</span>
                     <span class="stat-num accent-speed" id="statTps">--</span>
                     <span class="stat-sub">Tokens per second (TPS)</span>
@@ -396,6 +485,11 @@
                     <span class="stat-label">Time To First Token</span>
                     <span class="stat-num" id="statTtft">--</span>
                     <span class="stat-sub">Initial TTFT latency</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Estimated Cost</span>
+                    <span class="stat-num accent-cost" id="statEstimatedCost">--</span>
+                    <span class="stat-sub" id="statCostTier">Model rate pricing</span>
                   </div>
                 </div>
               </div>
@@ -406,16 +500,7 @@
                   <span class="toolbar-title">Raw Response Payload</span>
                   <button type="button" class="btn-ghost-sm" id="copyJsonBtn">Copy JSON</button>
                 </div>
-                <pre class="code-viewer" id="rawJsonViewer"><code>// Raw JSON response will appear here</code></pre>
-              </div>
-
-              <!-- cURL Pane -->
-              <div class="tab-pane" id="curlTab">
-                <div class="pane-toolbar">
-                  <span class="toolbar-title">Generated cURL Command</span>
-                  <button type="button" class="btn-ghost-sm" id="copyCurlBtn">Copy cURL</button>
-                </div>
-                <pre class="code-viewer" id="curlViewer"><code># Click Send or Quick Test to inspect cURL command</code></pre>
+                <pre class="code-viewer"><code id="rawJsonViewer">// Raw JSON response will appear here</code></pre>
               </div>
 
               <!-- Response Headers Pane -->
@@ -486,6 +571,41 @@
           <div class="arena-summary-banner" id="arenaSummaryBanner" style="display: none;">
             <div class="summary-text" id="arenaSummaryText">Dual test completed.</div>
             <div class="summary-tags" id="arenaSummaryTags"></div>
+            <div class="arena-winner-row" id="arenaWinnerRow">
+              <span class="winner-label">Judge Winner:</span>
+              <button type="button" class="btn-winner-chip" data-winner="A" id="voteWinnerABtn">Model A Won</button>
+              <button type="button" class="btn-winner-chip" data-winner="tie" id="voteWinnerTieBtn">Tie / Equal</button>
+              <button type="button" class="btn-winner-chip" data-winner="B" id="voteWinnerBBtn">Model B Won</button>
+              <button type="button" class="btn-ghost-sm" id="commitWinnerBtn" style="display: none;" title="Commit Winner configuration to Playground Sidebar">Commit Winner → Sidebar</button>
+              <button type="button" class="btn-ghost-sm" id="exportArenaBtn" title="Export comparison as Markdown">Export Comparison</button>
+            </div>
+          </div>
+
+          <!-- Arena Quick Sync & Configuration Toolbar -->
+          <div class="arena-toolbar" id="arenaToolbar">
+            <div class="arena-toolbar-group">
+              <button type="button" class="btn-arena-action" id="arenaPullSidebarToABtn" title="Import active sidebar provider, endpoint & auth into Model A">
+                <span class="action-icon">↓</span> Pull Sidebar → A
+              </button>
+              <button type="button" class="btn-arena-action highlight" id="arenaCopyAtoBBtn" title="Copy Provider, URL & Key from Model A to Model B (Test models on same provider)">
+                <span class="action-icon">→</span> Same Provider (A → B)
+              </button>
+              <button type="button" class="btn-arena-action" id="arenaSwapABBtn" title="Swap Model A and Model B configurations">
+                <span class="action-icon">⇄</span> Swap A ↔ B
+              </button>
+              <button type="button" class="btn-arena-action highlight" id="arenaCopyBtoABtn" title="Copy Provider, URL & Key from Model B to Model A (Test models on same provider)">
+                <span class="action-icon">←</span> Same Provider (B → A)
+              </button>
+              <button type="button" class="btn-arena-action" id="arenaPullSidebarToBBtn" title="Import active sidebar provider, endpoint & auth into Model B">
+                <span class="action-icon">↓</span> Pull Sidebar → B
+              </button>
+            </div>
+            <div class="arena-toolbar-group">
+              <label class="arena-sync-toggle" title="When enabled, changing Model A's provider/key automatically mirrors to Model B">
+                <input type="checkbox" id="arenaLockSameProviderCheck">
+                <span>Lock Same Provider</span>
+              </label>
+            </div>
           </div>
 
           <div class="arena-grid">
@@ -497,6 +617,9 @@
                   <span class="arena-model-name" id="arenaModelAName">Model A</span>
                 </div>
                 <div class="arena-header-controls">
+                  <button type="button" class="btn-arena-pill" id="arenaPullFromSidebarABtn" title="Pull active configuration from Playground sidebar">↓ Sidebar</button>
+                  <button type="button" class="btn-arena-pill" id="arenaSameAsBBtn" title="Copy Provider, URL & Key from Model B">Same as B</button>
+                  <button type="button" class="btn-arena-pill commit" id="arenaPushToSidebarABtn" title="Commit and push this Model A configuration back to Playground sidebar">Push to Sidebar ↑</button>
                   <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedA" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
                   <span class="badge-status idle" id="arenaStatusA">IDLE</span>
                 </div>
@@ -506,7 +629,10 @@
               <div class="arena-config-bar">
                 <div class="arena-config-row">
                   <div class="arena-field-group flex-provider">
-                    <label for="arenaModelAProvider">Provider</label>
+                    <div class="arena-label-with-action">
+                      <label for="arenaModelAProvider">Provider</label>
+                      <button type="button" class="btn-link-action" id="arenaQuickSameProviderABtn" title="Set to same provider, URL and auth as Model B">Same as B</button>
+                    </div>
                     <select id="arenaModelAProvider" class="arena-select">
                       <option value="custom" selected>Custom OpenAI-Compatible</option>
                       <option value="custom_anthropic">Custom Anthropic-Compatible</option>
@@ -565,6 +691,9 @@
                   <span class="arena-model-name" id="arenaModelBName">Model B</span>
                 </div>
                 <div class="arena-header-controls">
+                  <button type="button" class="btn-arena-pill" id="arenaPullFromSidebarBBtn" title="Pull active configuration from Playground sidebar">↓ Sidebar</button>
+                  <button type="button" class="btn-arena-pill" id="arenaSameAsABtn" title="Copy Provider, URL & Key from Model A">Same as A</button>
+                  <button type="button" class="btn-arena-pill commit" id="arenaPushToSidebarBBtn" title="Commit and push this Model B configuration back to Playground sidebar">Push to Sidebar ↑</button>
                   <button type="button" class="btn-arena-advanced" id="arenaToggleAdvancedB" title="Endpoint & Auth Overrides">⚙ Auth/URL</button>
                   <span class="badge-status idle" id="arenaStatusB">IDLE</span>
                 </div>
@@ -574,7 +703,10 @@
               <div class="arena-config-bar">
                 <div class="arena-config-row">
                   <div class="arena-field-group flex-provider">
-                    <label for="arenaModelBProvider">Provider</label>
+                    <div class="arena-label-with-action">
+                      <label for="arenaModelBProvider">Provider</label>
+                      <button type="button" class="btn-link-action" id="arenaQuickSameProviderBBtn" title="Set to same provider, URL and auth as Model A">Same as A</button>
+                    </div>
                     <select id="arenaModelBProvider" class="arena-select">
                       <option value="openai" selected>OpenAI (Official)</option>
                       <option value="claude">Anthropic Claude</option>
@@ -652,7 +784,21 @@
             </div>
 
             <div class="chat-composer">
+              <!-- Attached Image Preview Bar for Chat -->
+              <div class="chat-attachment-preview-bar" id="chatAttachmentPreviewBar" style="display: none;">
+                <div class="attachment-thumbnail-card">
+                  <img id="chatAttachmentThumbnailImg" alt="Attached preview">
+                  <div class="attachment-meta">
+                    <span class="attachment-name" id="chatAttachmentFileName">image.png</span>
+                  </div>
+                  <button type="button" class="btn-attachment-remove" id="chatRemoveAttachmentBtn" title="Remove image">✕</button>
+                </div>
+              </div>
               <div class="composer-input-row">
+                <label class="btn-chat-attach" title="Attach image to chat message">
+                  <input type="file" id="chatImageFileInput" accept="image/*" style="display: none;">
+                  <span>📷</span>
+                </label>
                 <textarea id="chatInputText" placeholder="Reply to model... (Press Enter to send, Shift+Enter for new line)" rows="2"></textarea>
                 <button type="button" id="chatSendBtn" class="btn-primary btn-chat-send">
                   <span>Send</span>
@@ -748,6 +894,32 @@
   <!-- Notification Toast Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="app.js?v=4.5"></script>
+  <!-- Modal Dialog: Mock Tool Output for Agentic Testing -->
+  <dialog id="toolMockModal" class="tool-modal">
+    <div class="tool-modal-content">
+      <div class="tool-modal-header">
+        <div class="modal-title-wrap">
+          <span class="badge-tool-tag">TOOL SIMULATOR</span>
+          <h3>Provide Mock Tool Output</h3>
+        </div>
+        <button type="button" id="closeToolModalBtn" class="btn-drawer-close">✕</button>
+      </div>
+      <div class="tool-modal-body">
+        <p class="tool-modal-desc">
+          Model requested tool execution for <strong id="modalToolName">function_name</strong> (<code id="modalToolId">call_123</code>). Enter output to send back to the model for step 2 synthesis:
+        </p>
+        <div class="form-group">
+          <label for="toolOutputTextarea">Tool Return Content (JSON or text)</label>
+          <textarea id="toolOutputTextarea" rows="6" class="code-textarea" placeholder="{ &quot;temperature&quot;: &quot;72F&quot;, &quot;condition&quot;: &quot;Partly Cloudy&quot; }"></textarea>
+        </div>
+      </div>
+      <div class="tool-modal-footer">
+        <button type="button" class="btn-secondary" id="cancelToolModalBtn">Cancel</button>
+        <button type="button" class="btn-primary" id="submitToolOutputBtn">Submit Tool Output & Continue</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js?v=4.7"></script>
 </body>
 </html>
